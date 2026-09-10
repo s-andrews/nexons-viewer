@@ -129,14 +129,104 @@ label.file-label .fname { max-width: 220px; overflow: hidden; text-overflow: ell
 #viewButton:disabled { background: #b9c0cc; color: #f0f1f3; cursor: not-allowed; }
 
 #plot-container {
-    margin: 16px 20px;
     background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
     padding: 10px;
     min-height: 60px;
     overflow: auto;
+    height: 100%;
+    box-sizing: border-box;
 }
+
+#panelArea {
+    margin: 16px 20px;
+    height: calc(100vh - 220px);
+    min-height: 420px;
+}
+
+.single-panel-wrap {
+    height: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--panel);
+}
+
+.panel-grid-outer, .panel-grid-row { height: 100%; }
+.panel-row { overflow: hidden; }
+.panel-col {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    display: flex;
+    flex-direction: column;
+}
+
+.resize-separator {
+    background: var(--border);
+    flex-shrink: 0;
+}
+.resize-separator-vertical { height: 6px; margin: 6px 0; cursor: row-resize; border-radius: 3px; }
+.resize-separator-horizontal { width: 6px; margin: 0 6px; cursor: col-resize; border-radius: 3px; }
+.resize-separator[data-active], .resize-separator:hover { background: var(--accent); }
+
+.alignment-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+.alignment-panel.dragging { opacity: 0.5; }
+.alignment-panel.drop-target .alignment-panel-header { outline: 2px dashed var(--accent); outline-offset: -2px; }
+
+.alignment-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: #eef1f5;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    flex-shrink: 0;
+}
+.drag-handle { cursor: grab; color: var(--muted); font-size: 14px; user-select: none; }
+.drag-handle:active { cursor: grabbing; }
+.panel-filename {
+    font-weight: 600;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+.lock-toggle {
+    flex-shrink: 0;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: white;
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--muted);
+}
+.lock-toggle.locked { color: var(--accent); border-color: var(--accent); background: #eaf1ff; }
+.lock-toggle:hover { border-color: var(--accent); }
+
+.alignment-panel-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+.alignment-panel-body #plot-container { margin: 0; border: none; border-radius: 0; }
+
+.panel-message {
+    padding: 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+}
+.panel-message-error { color: #b91c1c; }
 
 #placeholder {
     padding: 40px;

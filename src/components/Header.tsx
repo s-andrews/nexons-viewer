@@ -8,7 +8,7 @@ interface HeaderProps {
     exonIndexById: Map<string, ExonGene>;
     status: string;
     onExonIndexFile: (file: File) => void;
-    onBamBaiFiles: (bamFile: File, baiFile: File) => void;
+    onBamBaiFiles: (pairs: { bamFile: File; baiFile: File }[]) => void;
     onSelectGene: (geneId: string) => void;
 }
 
@@ -43,16 +43,18 @@ export default function Header({
 
     function handleBamBaiInput(e: ChangeEvent<HTMLInputElement>) {
         const files = [...(e.target.files ?? [])];
-        const bamFile = files.find((f) => /\.bam$/i.test(f.name));
-        const baiFile = files.find((f) => /\.bai$/i.test(f.name));
-        if (!bamFile || !baiFile) {
-            window.alert("Select both the .bam file and its matching .bai file together");
+        const bams = files.filter((file) => /\.bam$/i.test(file.name));
+        const bais = files.filter((file) => /\.bai$/i.test(file.name));
+        const pairs = bams.map((bamFile) => {
+            const expectedNames = new Set([`${bamFile.name}.bai`, bamFile.name.replace(/\.bam$/i, ".bai")]);
+            const baiFile = bais.find((file) => expectedNames.has(file.name));
+            return baiFile ? { bamFile, baiFile } : null;
+        }).filter((pair): pair is { bamFile: File; baiFile: File } => pair !== null);
+
+        if (pairs.length !== bams.length || pairs.length === 0) {
+            window.alert("Select each BAM together with its matching BAI file");
         } else {
-            const expectedBai = bamFile.name + ".bai";
-            if (baiFile.name !== expectedBai) {
-                console.warn(`"${baiFile.name}" doesn't look like the standard index name for "${bamFile.name}" (expected "${expectedBai}") - continuing anyway`);
-            }
-            onBamBaiFiles(bamFile, baiFile);
+            onBamBaiFiles(pairs);
         }
         e.target.value = "";
     }

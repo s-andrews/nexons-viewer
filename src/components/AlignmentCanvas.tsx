@@ -116,6 +116,9 @@ interface AlignmentCanvasProps {
     gene: ExonGene;
     records: BamRecord[];
     exonIndexById: Map<string, ExonGene>;
+    locked: boolean;
+    sharedView: { start: number; end: number } | null;
+    onViewChange: (view: { start: number; end: number }) => void;
 }
 
 const ZOOM_LEVELS: { label: string; bp: number | null }[] = [
@@ -129,7 +132,7 @@ const ZOOM_LEVELS: { label: string; bp: number | null }[] = [
     { label: "100 bp", bp: 100 },
 ];
 
-export default function AlignmentCanvas({ gene, records, exonIndexById }: AlignmentCanvasProps) {
+export default function AlignmentCanvas({ gene, records, exonIndexById, locked, sharedView, onViewChange }: AlignmentCanvasProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
@@ -166,9 +169,24 @@ export default function AlignmentCanvas({ gene, records, exonIndexById }: Alignm
 
     const [view, setView] = useState({ start: hardStart0, end: hardEnd0 });
 
+    const effectiveView = locked && sharedView ? sharedView : view;
+
+    function updateView(nextView: { start: number; end: number }) {
+        setView(nextView);
+        onViewChange(nextView);
+    }
+
+    const updateViewRef = useRef(updateView);
+    updateViewRef.current = updateView;
+
+    useEffect(() => {
+        if (locked && sharedView) setView(sharedView);
+    }, [locked, sharedView]);
+
     // Reset pan/zoom whenever a different gene's alignments are opened
     useEffect(() => {
-        setView({ start: hardStart0, end: hardEnd0 });
+        updateView({ start: hardStart0, end: hardEnd0 });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [hardStart0, hardEnd0]);
 
     const overlappingGenes = useMemo(
@@ -207,15 +225,15 @@ export default function AlignmentCanvas({ gene, records, exonIndexById }: Alignm
 
     function setViewWidth(bp: number) {
         const newWidth = Math.max(MIN_VIEW_BP, Math.min(bp, hardEnd0 - hardStart0));
-        const center = (view.start + view.end) / 2;
+        const center = (effectiveView.start + effectiveView.end) / 2;
         const [s, e] = clampView(center - newWidth / 2, center + newWidth / 2);
-        setView({ start: s, end: e });
+        updateView({ start: s, end: e });
     }
 
     function panByFraction(frac: number) {
-        const shift = (view.end - view.start) * frac;
-        const [s, e] = clampView(view.start + shift, view.end + shift);
-        setView({ start: s, end: e });
+        const shift = (effectiveView.end - effectiveView.start) * frac;
+        const [s, e] = clampView(effectiveView.start + shift, effectiveView.end + shift);
+        updateView({ start: s, end: e });
     }
 
     // ---- draw ----
@@ -225,11 +243,11 @@ export default function AlignmentCanvas({ gene, records, exonIndexById }: Alignm
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
 
-        const scaleX: ScaleX = (g) => marginL + ((g - view.start) / (view.end - view.start)) * (width - marginL - MARGIN_R);
+        const scaleX: ScaleX = (g) => marginL + ((g - effectiveView.start) / (effectiveView.end - effectiveView.start)) * (width - marginL - MARGIN_R);
         const pxPerBase = scaleX(1) - scaleX(0);
         const showCigarDetail = pxPerBase >= CIGAR_DETAIL_MIN_PX_PER_BASE;
 
-        const visible = records.filter((r) => r.start < view.end && r.end > view.start);
+        const visible = records.filter((r) => r.start < effectiveView.end && r.end > effectiveView.start);
         const assignedTranscriptIds = new Set(transcripts.map((t) => t.id));
 
         type Lane =
@@ -249,7 +267,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById }: Alignm
         lanes.push({ kind: "no_match", layout: layoutLane(noMatchReads, scaleX) });
 
         const geneItems = overlappingGenes
-            .filter((g) => g.start - 1 < view.end && g.end > view.start)
+            .filter((g) => g.start - 1 < effectiveView.end && g.end > effectiveView.start)
             .map((g) => ({ start: g.start - 1, end: g.end, gene: g }));
         const geneLayout = packGeneItems(geneItems, scaleX);
         const contextHeight = geneLayout.rowCount > 0
@@ -281,8 +299,8 @@ export default function AlignmentCanvas({ gene, records, exonIndexById }: Alignm
         ctx.moveTo(marginL, 20.5);
         ctx.lineTo(width - MARGIN_R, 20.5);
         ctx.stroke();
-        ctx.fillText(`${Math.round(view.start + 1).toLocaleString()}`, marginL, 14);
-        const endLabel = `${Math.round(view.end).toLocaleString()}`;
+        ctx.fillText(`${Math.round(effectiveView.start + 1).toLocaleString()}`, marginL, 14);
+        const endLabel = `${Math.round(effectiveView.end).toLocaleString()}`;
         ctx.fillText(endLabel, width - MARGIN_R - ctx.measureText(endLabel).width, 14);
 
         const hitRects: HitRect[] = [];
@@ -445,7 +463,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById }: Alignm
         }
 
         hitRectsRef.current = hitRects;
-    }, [view, records, gene, transcripts, overlappingGenes, marginL, width, geneStart0]);
+    }, [effectiveView, records, gene, transcripts, overlappingGenes, marginL, width, geneStart0]);
 
     // ---- tooltip positioning: flip to stay inside the viewport ----
     useLayoutEffect(() => {
@@ -464,18 +482,18 @@ export default function AlignmentCanvas({ gene, records, exonIndexById }: Alignm
         evt.preventDefault();
         const rect = evt.currentTarget.getBoundingClientRect();
         const mx = evt.clientX - rect.left;
-        const curWidth = view.end - view.start;
-        const cursorGenomic = view.start + ((mx - marginL) / (width - marginL - MARGIN_R)) * curWidth;
+        const curWidth = effectiveView.end - effectiveView.start;
+        const cursorGenomic = effectiveView.start + ((mx - marginL) / (width - marginL - MARGIN_R)) * curWidth;
         const factor = evt.deltaY > 0 ? 1.25 : 0.8;
         const newWidth = Math.max(MIN_VIEW_BP, Math.min(curWidth * factor, hardEnd0 - hardStart0));
-        const ratio = (cursorGenomic - view.start) / curWidth;
+        const ratio = (cursorGenomic - effectiveView.start) / curWidth;
         const newStart = cursorGenomic - ratio * newWidth;
         const [s, e] = clampView(newStart, newStart + newWidth);
-        setView({ start: s, end: e });
+        updateView({ start: s, end: e });
     }
 
     function handleMouseDown(evt: React.MouseEvent<HTMLCanvasElement>) {
-        draggingRef.current = { startX: evt.clientX, view: { ...view } };
+        draggingRef.current = { startX: evt.clientX, view: { ...effectiveView } };
         setTooltip(null);
     }
 
@@ -488,7 +506,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById }: Alignm
             const bpPerPx = curWidth / (width - marginL - MARGIN_R);
             const shift = -dx * bpPerPx;
             const [s, e] = clampView(dragging.view.start + shift, dragging.view.end + shift);
-            setView({ start: s, end: e });
+            updateViewRef.current({ start: s, end: e });
         }
         function onUp() {
             draggingRef.current = null;
@@ -503,7 +521,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById }: Alignm
     }, [width, marginL, hardStart0, hardEnd0]);
 
     function handleDoubleClick() {
-        setView({ start: hardStart0, end: hardEnd0 });
+        updateView({ start: hardStart0, end: hardEnd0 });
     }
 
     function handleMouseMove(evt: React.MouseEvent<HTMLCanvasElement>) {
