@@ -1,0 +1,181 @@
+:root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --border: #d7dbe0;
+    --text: #1f2933;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --unique: 50,160,50;
+    --partial: 230,159,0;
+    --gene: 140,140,140;
+    --multi: 200,50,50;
+    --none: 100,120,200;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+}
+
+header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+
+select, input[type=text] {
+    padding: 7px 9px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    background: white;
+}
+
+label.file-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+label.file-label:hover { border-color: var(--accent); color: var(--accent); }
+label.file-label input { display: none; }
+label.file-label .fname { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+#geneSearchWrap { position: relative; flex: 1; min-width: 260px; }
+#geneSearch { width: 100%; box-sizing: border-box; }
+#geneSearch:disabled { background: #f0f1f3; color: var(--muted); }
+#suggestions {
+    position: absolute;
+    top: 38px;
+    left: 0;
+    right: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    max-height: 320px;
+    overflow-y: auto;
+    z-index: 10;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+}
+#suggestions .row {
+    padding: 8px 10px;
+    cursor: pointer;
+    font-size: 13px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+}
+#suggestions .row:hover { background: #f0f4ff; }
+.sugg-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+#status { font-size: 12px; color: var(--muted); min-width: 220px; text-align: right; }
+
+#legend {
+    display: flex;
+    gap: 18px;
+    padding: 7px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+    flex-wrap: wrap;
+}
+#legend .group { display: flex; gap: 12px; align-items: center; }
+#legend .sep { width: 1px; height: 14px; background: var(--border); }
+#legend .item { display: flex; align-items: center; gap: 5px; }
+.box { width: 12px; height: 10px; border-radius: 2px; display: inline-block; vertical-align: middle; }
+.box.secondary { border: 1px dashed rgba(0,0,0,0.5); background: repeating-linear-gradient(45deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 2px, transparent 2px, transparent 4px); }
+
+#geneTitle { font-size: 13px; font-weight: 600; margin: 16px 20px 0 20px; color: var(--text); }
+#geneSubtitle { font-size: 12px; color: var(--muted); margin: 2px 20px 0 20px; }
+
+#statsRow { display: flex; align-items: center; gap: 14px; margin: 10px 20px 0 20px; flex-wrap: wrap; }
+#statsPanel {
+    min-width: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+}
+.stats-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.stats-nr { display: flex; align-items: center; gap: 5px; }
+.stats-loading { color: var(--muted); }
+
+#viewButton {
+    flex-shrink: 0;
+    padding: 7px 14px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent);
+    color: white;
+    font-size: 13px;
+    cursor: pointer;
+}
+#viewButton:hover:not(:disabled) { background: #1d4ed8; }
+#viewButton:disabled { background: #b9c0cc; color: #f0f1f3; cursor: not-allowed; }
+
+#plot-container {
+    margin: 16px 20px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    min-height: 60px;
+    overflow: auto;
+}
+
+#placeholder {
+    padding: 40px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+    margin: 16px 20px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.plot-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.zoom-select { padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; background: white; }
+.pan-btn {
+    padding: 4px 9px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: white;
+    font-size: 11px;
+    color: var(--text);
+    cursor: pointer;
+}
+.pan-btn:hover { border-color: var(--accent); color: var(--accent); }
+.plot-hint { font-size: 11px; color: var(--muted); margin-left: auto; }
+.plot-footer-spacer { height: 160px; }
+
+canvas { display: block; }
+
+#tooltip {
+    position: fixed;
+    pointer-events: none;
+    background: #1f2933;
+    color: white;
+    font-size: 12px;
+    padding: 6px 9px;
+    border-radius: 6px;
+    line-height: 1.5;
+    z-index: 50;
+    max-width: 320px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
