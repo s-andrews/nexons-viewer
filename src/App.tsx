@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import type { BaiRefIndex, BamRecord, ExonGene } from "./types";
 import { parseBAMHeader, readBAI, fetchRegionRecords } from "./bamIo";
@@ -45,6 +45,11 @@ export default function App() {
 
     const [dragId, setDragId] = useState<string | null>(null);
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+
+    // Density-track peaks reported by each panel (per transcript id), merged across panels so
+    // the same transcript scales identically no matter which BAM file it's being viewed in.
+    const [peaksBySource, setPeaksBySource] = useState<Map<string, Map<string, number>>>(new Map());
+    const peaksCallbacksRef = useRef<Map<string, (peaks: Map<string, number>) => void>>(new Map());
 
     const queryTokensRef = useRef<Map<string, number>>(new Map());
 
@@ -155,6 +160,33 @@ export default function App() {
         });
     }, []);
 
+    const handlePeaksChange = useCallback((sourceId: string, peaks: Map<string, number>) => {
+        setPeaksBySource((prev) => {
+            const next = new Map(prev);
+            next.set(sourceId, peaks);
+            return next;
+        });
+    }, []);
+
+    // Stable per-source callback identity (AlignmentCanvas only re-reports peaks when its own
+    // values change, so this doesn't need to change every render to avoid a report/re-render loop).
+    function getPeaksCallback(sourceId: string) {
+        let fn = peaksCallbacksRef.current.get(sourceId);
+        if (!fn) {
+            fn = (peaks: Map<string, number>) => handlePeaksChange(sourceId, peaks);
+            peaksCallbacksRef.current.set(sourceId, fn);
+        }
+        return fn;
+    }
+
+    const sharedPeaks = useMemo(() => {
+        const merged = new Map<string, number>();
+        for (const peaks of peaksBySource.values()) {
+            for (const [id, v] of peaks) merged.set(id, Math.max(merged.get(id) ?? 0, v));
+        }
+        return merged;
+    }, [peaksBySource]);
+
     function reorder(draggedId: string, targetId: string) {
         if (draggedId === targetId) return;
         setSources((prev) => {
@@ -223,6 +255,8 @@ export default function App() {
                 locked={source.locked}
                 sharedView={sharedView}
                 onViewChange={(v) => handlePanelViewChange(source.id, v)}
+                sharedPeaks={sharedPeaks}
+                onPeaksChange={getPeaksCallback(source.id)}
                 onToggleLock={() => toggleLock(source.id)}
                 showLock={lockableCount > 1}
                 draggable={lockableCount > 1}

@@ -12,6 +12,8 @@ interface AlignmentPanelProps {
     locked: boolean;
     sharedView: { start: number; end: number } | null;
     onViewChange: (view: { start: number; end: number }) => void;
+    sharedPeaks: Map<string, number> | null;
+    onPeaksChange: (peaks: Map<string, number>) => void;
     onToggleLock: () => void;
     showLock: boolean;
     draggable: boolean;
@@ -34,6 +36,8 @@ export default function AlignmentPanel({
     locked,
     sharedView,
     onViewChange,
+    sharedPeaks,
+    onPeaksChange,
     onToggleLock,
     showLock,
     draggable,
@@ -82,6 +86,8 @@ export default function AlignmentPanel({
                         locked={locked}
                         sharedView={sharedView}
                         onViewChange={onViewChange}
+                        sharedPeaks={sharedPeaks}
+                        onPeaksChange={onPeaksChange}
                     />
                 )}
             </div>
