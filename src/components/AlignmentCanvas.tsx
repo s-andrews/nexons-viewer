@@ -51,8 +51,27 @@ type ScaleX = (g: number) => number;
 interface PackedRead extends BamRecord { row: number }
 interface PackedGeneItem { start: number; end: number; gene: ExonGene; row: number }
 
+// Longer first (leftmost) exon/block sorts to the top; ties break on where the next block
+// starts (earlier first), then that block's length, and so on down the block list - clusters
+// reads sharing an exon structure together instead of ordering purely by genomic start.
+function compareByExonStructure(a: BamRecord, b: BamRecord): number {
+    const maxLen = Math.max(a.blocks.length, b.blocks.length);
+    for (let i = 0; i < maxLen; i++) {
+        const ba = a.blocks[i];
+        const bb = b.blocks[i];
+        if (!ba && !bb) break;
+        if (!ba) return 1;
+        if (!bb) return -1;
+        if (i > 0 && ba[0] !== bb[0]) return ba[0] - bb[0];
+        const lenA = ba[1] - ba[0];
+        const lenB = bb[1] - bb[0];
+        if (lenA !== lenB) return lenB - lenA;
+    }
+    return a.start - b.start;
+}
+
 function packReads(reads: BamRecord[], scaleX: ScaleX): { reads: PackedRead[]; rowCount: number } {
-    const sorted = [...reads].sort((a, b) => a.start - b.start) as PackedRead[];
+    const sorted = [...reads].sort(compareByExonStructure) as PackedRead[];
     const rowEndPx: number[] = [];
     for (const r of sorted) {
         const xStart = scaleX(r.start);
