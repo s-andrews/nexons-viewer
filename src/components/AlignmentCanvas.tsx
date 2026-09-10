@@ -550,7 +550,6 @@ export default function AlignmentCanvas({ gene, records, exonIndexById }: Alignm
                         <>
                             <div><b>{gene.name && gene.name !== gene.id ? gene.name : gene.id}</b> - gene region</div>
                             <div>{gene.chrom}:{gene.start.toLocaleString()}-{gene.end.toLocaleString()}</div>
-                            <div className="stats-loading">The display window below extends further to also fit overlapping-gene transcripts and out-of-bounds reads</div>
                         </>
                     )}
                     {tooltip.hit.kind === "gene" && (() => {
@@ -571,6 +570,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById }: Alignm
                                 <div><b>{r.readName}</b></div>
                                 <div>{r.chrom}:{(r.start + 1).toLocaleString()}-{r.end.toLocaleString()} ({r.isReverse ? "-" : "+"} strand)</div>
                                 <div>mapq {r.mapq} — {r.isSecondary ? "secondary" : "primary"} alignment</div>
+                                <div>nG: {r.tags.nG ?? "—"}</div>
                                 <div>nR: {r.tags.nR ?? "—"} &nbsp; nT: {r.tags.nT ?? "—"}</div>
                                 <div>CIGAR: {cigarString(r.cigar)}</div>
                             </>
