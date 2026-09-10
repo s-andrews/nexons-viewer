@@ -51,22 +51,37 @@ type ScaleX = (g: number) => number;
 interface PackedRead extends BamRecord { row: number }
 interface PackedGeneItem { start: number; end: number; gene: ExonGene; row: number }
 
-// Longer first (leftmost) exon/block sorts to the top; ties break on where the next block
-// starts (earlier first), then that block's length, and so on down the block list - clusters
-// reads sharing an exon structure together instead of ordering purely by genomic start.
-function compareByExonStructure(a: BamRecord, b: BamRecord): number {
-    const maxLen = Math.max(a.blocks.length, b.blocks.length);
-    for (let i = 0; i < maxLen; i++) {
-        const ba = a.blocks[i];
-        const bb = b.blocks[i];
-        if (!ba && !bb) break;
-        if (!ba) return 1;
-        if (!bb) return -1;
-        if (i > 0 && ba[0] !== bb[0]) return ba[0] - bb[0];
-        const lenA = ba[1] - ba[0];
-        const lenB = bb[1] - bb[0];
-        if (lenA !== lenB) return lenB - lenA;
+// The splice donor/acceptor positions a read uses (every block boundary except the very first
+// start and very last end, which just reflect wherever a Nanopore read happened to get
+// truncated). Two reads of the same isoform share this exactly, even with very different
+// 5'/3' trimming, so it's what should cluster them - raw first-exon length does not.
+function junctionKey(r: BamRecord): number[] {
+    const key: number[] = [];
+    for (let i = 0; i < r.blocks.length; i++) {
+        if (i > 0) key.push(r.blocks[i][0]);
+        if (i < r.blocks.length - 1) key.push(r.blocks[i][1]);
     }
+    return key;
+}
+
+// Groups reads by shared splice-junction pattern first; within a group (same isoform, or all
+// unspliced), the read with the longer first exon - i.e. the more complete 5' end - sorts to
+// the top.
+function compareByExonStructure(a: BamRecord, b: BamRecord): number {
+    const ka = junctionKey(a);
+    const kb = junctionKey(b);
+    const maxLen = Math.max(ka.length, kb.length);
+    for (let i = 0; i < maxLen; i++) {
+        const va = ka[i];
+        const vb = kb[i];
+        if (va === undefined && vb === undefined) break;
+        if (va === undefined) return 1;
+        if (vb === undefined) return -1;
+        if (va !== vb) return va - vb;
+    }
+    const lenA = a.blocks[0] ? a.blocks[0][1] - a.blocks[0][0] : 0;
+    const lenB = b.blocks[0] ? b.blocks[0][1] - b.blocks[0][0] : 0;
+    if (lenA !== lenB) return lenB - lenA;
     return a.start - b.start;
 }
 
