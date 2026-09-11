@@ -522,22 +522,29 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         // reads for this transcript - just show the exon model on its own.
         const hasDensity = (id: string) => (displayPeaks.get(id) ?? 0) > 0;
 
+        // The density track (when there's anything to show) stays visible whether a lane is
+        // collapsed or expanded - only the individual reads below it toggle. Otherwise expanding
+        // a lane removes the track and everything shifts up, so the row you just clicked jumps
+        // out from under the mouse.
         const lanes: Lane[] = transcripts.map((t) => {
             const collapsed = collapsedIds.has(t.id);
             const reads = visible.filter((r) => r.tags.nT === t.id);
-            return collapsed
-                ? { kind: "transcript", t, collapsed, layout: null, density: computeCoverage(reads, scaleX, pxFrom, pxTo) }
-                : { kind: "transcript", t, collapsed, layout: layoutLane(reads, scaleX), density: null };
+            return {
+                kind: "transcript", t, collapsed,
+                layout: collapsed ? null : layoutLane(reads, scaleX),
+                density: computeCoverage(reads, scaleX, pxFrom, pxTo),
+            };
         });
 
         const unassigned = visible.filter((r) => !r.tags.nT || !assignedTranscriptIds.has(r.tags.nT as string));
         const geneLevelReads = unassigned.filter((r) => r.tags.nR === "gene");
         const noMatchReads = unassigned.filter((r) => r.tags.nR !== "gene");
         const unassignedCollapsed = collapsedIds.has(UNASSIGNED_ID);
+        const unassignedDensity = computeCoverage([...geneLevelReads, ...noMatchReads], scaleX, pxFrom, pxTo);
         lanes.push(
             unassignedCollapsed
-                ? { kind: "unassigned", collapsed: true, geneLevelLayout: null, noMatchLayout: null, density: computeCoverage([...geneLevelReads, ...noMatchReads], scaleX, pxFrom, pxTo) }
-                : { kind: "unassigned", collapsed: false, geneLevelLayout: layoutLane(geneLevelReads, scaleX), noMatchLayout: layoutLane(noMatchReads, scaleX), density: null },
+                ? { kind: "unassigned", collapsed: true, geneLevelLayout: null, noMatchLayout: null, density: unassignedDensity }
+                : { kind: "unassigned", collapsed: false, geneLevelLayout: layoutLane(geneLevelReads, scaleX), noMatchLayout: layoutLane(noMatchReads, scaleX), density: unassignedDensity },
         );
 
         const geneItems = overlappingGenes
@@ -551,15 +558,16 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         let height = 30 + GENE_REGION_ROW_H + SEP_GAP + 1 + SEP_GAP + contextHeight;
         for (const lane of lanes) {
             height += SEP_GAP + 1 + SEP_GAP;
+            // density track (when there's anything to show) sits above the exon-model row and
+            // stays put whether the lane is collapsed or expanded - only what's below it toggles
+            const id = lane.kind === "transcript" ? lane.t.id : UNASSIGNED_ID;
+            height += hasDensity(id) ? DENSITY_TRACK_H + DENSITY_GAP + EXON_ROW_H : EXON_ROW_H;
             if (lane.collapsed) {
-                // density track sits directly above its exon-model row with a tight gap -
-                // omitted entirely when no open panel has any reads for this lane
-                const id = lane.kind === "transcript" ? lane.t.id : UNASSIGNED_ID;
-                height += hasDensity(id) ? DENSITY_TRACK_H + DENSITY_GAP + EXON_ROW_H + LANE_BOTTOM_GAP : EXON_ROW_H + LANE_BOTTOM_GAP;
+                height += LANE_BOTTOM_GAP;
             } else if (lane.kind === "transcript") {
-                height += EXON_ROW_H + LANE_INNER_GAP + lane.layout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
+                height += LANE_INNER_GAP + lane.layout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
             } else {
-                height += EXON_ROW_H + LANE_INNER_GAP;
+                height += LANE_INNER_GAP;
                 height += 14 + LANE_INNER_GAP + lane.geneLevelLayout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
                 height += 14 + LANE_INNER_GAP + lane.noMatchLayout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
             }
@@ -650,17 +658,18 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                     drawToggleLabel(ctx, marginL, width, t.id, lane.collapsed, rowY, EXON_ROW_H, t.id, hitRects);
                 };
 
+                // density track sits above its transcript's exon row and stays put whether
+                // collapsed or expanded, so the row doesn't jump out from under the mouse on toggle
+                if (hasDensity(t.id)) {
+                    drawDensityTrack(ctx, marginL, pxFrom, lane.density!, displayPeaks.get(t.id) ?? 0, y, DENSITY_TRACK_H);
+                    y += DENSITY_TRACK_H + DENSITY_GAP;
+                }
+                drawExonRow(y);
+                y += EXON_ROW_H;
                 if (lane.collapsed) {
-                    // density track sits directly above its transcript's exon row
-                    if (hasDensity(t.id)) {
-                        drawDensityTrack(ctx, marginL, pxFrom, lane.density!, displayPeaks.get(t.id) ?? 0, y, DENSITY_TRACK_H);
-                        y += DENSITY_TRACK_H + DENSITY_GAP;
-                    }
-                    drawExonRow(y);
-                    y += EXON_ROW_H + LANE_BOTTOM_GAP;
+                    y += LANE_BOTTOM_GAP;
                 } else {
-                    drawExonRow(y);
-                    y += EXON_ROW_H + LANE_INNER_GAP;
+                    y += LANE_INNER_GAP;
                     for (const r of lane.layout!.reads) drawReadRow(ctx, r, y + r.row * (ROW_H + ROW_GAP), scaleX, showCigarDetail, hitRects);
                     y += lane.layout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
                 }
@@ -684,16 +693,16 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                     drawToggleLabel(ctx, marginL, width, "Unassigned reads", lane.collapsed, rowY, EXON_ROW_H, UNASSIGNED_ID, hitRects);
                 };
 
+                if (hasDensity(UNASSIGNED_ID)) {
+                    drawDensityTrack(ctx, marginL, pxFrom, lane.density!, displayPeaks.get(UNASSIGNED_ID) ?? 0, y, DENSITY_TRACK_H);
+                    y += DENSITY_TRACK_H + DENSITY_GAP;
+                }
+                drawMergedExonRow(y);
+                y += EXON_ROW_H;
                 if (lane.collapsed) {
-                    if (hasDensity(UNASSIGNED_ID)) {
-                        drawDensityTrack(ctx, marginL, pxFrom, lane.density!, displayPeaks.get(UNASSIGNED_ID) ?? 0, y, DENSITY_TRACK_H);
-                        y += DENSITY_TRACK_H + DENSITY_GAP;
-                    }
-                    drawMergedExonRow(y);
-                    y += EXON_ROW_H + LANE_BOTTOM_GAP;
+                    y += LANE_BOTTOM_GAP;
                 } else {
-                    drawMergedExonRow(y);
-                    y += EXON_ROW_H + LANE_INNER_GAP;
+                    y += LANE_INNER_GAP;
 
                     ctx.fillStyle = "#4b5563";
                     ctx.font = "600 11px -apple-system, sans-serif";
