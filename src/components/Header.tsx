@@ -3,10 +3,13 @@ import type { ExonGene } from "../types";
 
 interface HeaderProps {
     exonFileName: string;
+    gtfProgress: number | null;
     bamFileLabel: string;
     exonIndexReady: boolean;
     exonIndexById: Map<string, ExonGene>;
     status: string;
+    tslLevel: string;
+    onTslLevelChange: (level: string) => void;
     onExonIndexFile: (file: File) => void;
     onBamBaiFiles: (pairs: { bamFile: File; baiFile: File }[]) => void;
     onSelectGene: (geneId: string) => void;
@@ -14,10 +17,13 @@ interface HeaderProps {
 
 export default function Header({
     exonFileName,
+    gtfProgress,
     bamFileLabel,
     exonIndexReady,
     exonIndexById,
     status,
+    tslLevel,
+    onTslLevelChange,
     onExonIndexFile,
     onBamBaiFiles,
     onSelectGene,
@@ -69,13 +75,39 @@ export default function Header({
         <header>
             <h1>Nexons&nbsp;read&nbsp;viewer</h1>
 
-            <label className="file-label" htmlFor="exonInput">
-                Exon index <span className="fname">{exonFileName}</span>
-                <input type="file" id="exonInput" accept=".json" onChange={handleExonInput} />
+            <label className="tsl-label" htmlFor="tslSelect">
+                Max TSL:
+                <select
+                    id="tslSelect"
+                    value={tslLevel}
+                    onChange={(e) => onTslLevelChange(e.target.value)}
+                    title="Transcript support level filter (applies when loading a .gtf file)"
+                >
+                    <option value="all">All</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                </select>
+            </label>
+
+            <label className={`file-label${gtfProgress !== null ? " file-label-progress" : ""}`} htmlFor="exonInput">
+                {gtfProgress !== null && (
+                    <span className="progress-fill" style={{ width: `${Math.min(100, Math.round(gtfProgress * 100))}%` }} />
+                )}
+                <span className="file-label-text">
+                    {gtfProgress !== null
+                        ? `Parsing… ${Math.round(gtfProgress * 100)}%`
+                        : exonFileName
+                            ? `GTF: ${exonFileName}`
+                            : "Select GTF File"}
+                </span>
+                <input type="file" id="exonInput" accept=".json,.gtf,.gtf.txt" disabled={gtfProgress !== null} onChange={handleExonInput} />
             </label>
 
             <label className="file-label" htmlFor="bamBaiInput">
-                BAM + BAI <span className="fname">{bamFileLabel}</span>
+                BAM + BAI: <span className="fname">{bamFileLabel}</span>
                 <input type="file" id="bamBaiInput" accept=".bam,.bai" multiple onChange={handleBamBaiInput} />
             </label>
 
@@ -83,7 +115,7 @@ export default function Header({
                 <input
                     id="geneSearch"
                     type="text"
-                    placeholder={exonIndexReady ? "Gene ID or name" : "Load an exon index first…"}
+                    placeholder={exonIndexReady ? "Gene ID or name" : "Load a GTF first…"}
                     disabled={!exonIndexReady}
                     autoComplete="off"
                     value={query}

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
-import { Group, Panel, Separator } from "react-resizable-panels";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BaiRefIndex, BamRecord, ExonGene } from "./types";
 import { parseBAMHeader, readBAI, fetchRegionRecords } from "./bamIo";
+import { parseGtfFile } from "./gtfIo";
 import Header from "./components/Header";
 import Legend from "./components/Legend";
 import AlignmentPanel from "./components/AlignmentPanel";
@@ -18,62 +18,105 @@ interface BamSource {
     records: BamRecord[] | null;
     queryLoading: boolean;
     queryError: string | null;
+    // Which gene the current records/queryLoading/queryError reflect - lets the query effect
+    // tell "never queried" apart from "queried, but for a different gene" without a separate pass.
+    queriedGeneId: string | null;
+}
+
+// Panels are 4 fixed slots laid out 2x2. A slot holds a reference to a pool source (or none,
+// rendered as an empty slot) - loading more BAM/BAI pairs than there are empty slots just adds
+// them to the pool, still pickable from any slot's dropdown, including a slot that already
+// shows another pair (duplicates across slots are fine, they just share the same query result).
+const SLOT_COUNT = 4;
+
+interface PanelSlot {
+    sourceId: string | null;
     locked: boolean;
+}
+
+function makeEmptySlots(): PanelSlot[] {
+    return Array.from({ length: SLOT_COUNT }, () => ({ sourceId: null, locked: true }));
 }
 
 function makeId() {
     return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-// Row-count layout: 1-3 sources are a single row; 4+ split into two rows as evenly as possible
-// (matching the requested 2 -> 2-up, 3 -> 3-up, 4 -> 2x2 arrangement).
-function computeRows(n: number): number[] {
-    if (n <= 3) return [n];
-    const first = Math.ceil(n / 2);
-    return [first, n - first];
-}
-
 export default function App() {
     const [exonIndexById, setExonIndexById] = useState<Map<string, ExonGene>>(new Map());
-    const [exonFileName, setExonFileName] = useState("choose file…");
+    const [exonFileName, setExonFileName] = useState("");
+    const [gtfProgress, setGtfProgress] = useState<number | null>(null);
+    const [tslLevel, setTslLevel] = useState("2");
+    const lastGtfFileRef = useRef<File | null>(null);
     const [sources, setSources] = useState<BamSource[]>([]);
-    const [status, setStatus] = useState("No exon index loaded");
+    const [slots, setSlots] = useState<PanelSlot[]>(makeEmptySlots());
+    const [status, setStatus] = useState("No GTF loaded");
 
     const [currentGeneId, setCurrentGeneId] = useState<string | null>(null);
     const [viewingGeneId, setViewingGeneId] = useState<string | null>(null);
     const [sharedView, setSharedView] = useState<{ start: number; end: number } | null>(null);
 
-    const [dragId, setDragId] = useState<string | null>(null);
-    const [dropTargetId, setDropTargetId] = useState<string | null>(null);
-
-    // Density-track peaks reported by each panel (per transcript id), merged across panels so
-    // the same transcript scales identically no matter which BAM file it's being viewed in.
-    const [peaksBySource, setPeaksBySource] = useState<Map<string, Map<string, number>>>(new Map());
-    const peaksCallbacksRef = useRef<Map<string, (peaks: Map<string, number>) => void>>(new Map());
+    // Density-track peaks reported by each panel slot (per transcript id), merged across slots
+    // so the same transcript scales identically no matter which panel it's viewed in.
+    const [peaksBySlot, setPeaksBySlot] = useState<Map<number, Map<string, number>>>(new Map());
+    const peaksCallbacksRef = useRef<Map<number, (peaks: Map<string, number>) => void>>(new Map());
 
     const queryTokensRef = useRef<Map<string, number>>(new Map());
 
-    const bamFileLabel = sources.length === 0 ? "choose files…" : sources.map((s) => s.label).join(", ");
+    const bamFileLabel = sources.length === 0 ? "choose files…" : `${sources.length} set${sources.length === 1 ? "" : "s"}`;
     const anyBamReady = sources.some((s) => s.ready);
 
-    const handleExonIndexFile = useCallback(async (file: File) => {
-        setExonFileName(file.name);
+    const parseGtfWithLevel = useCallback(async (file: File, level: string) => {
+        setGtfProgress(0);
+        setExonIndexById(new Map()); // drop the previous index up front so it can be freed while the next one builds
+        const map = new Map<string, ExonGene>();
         try {
-            const text = await file.text();
-            const genes: ExonGene[] = JSON.parse(text);
-            const map = new Map<string, ExonGene>();
-            for (const g of genes) map.set(g.id, g);
+            const maxTsl = level === "all" ? null : parseInt(level, 10);
+            await parseGtfFile(file, maxTsl, {
+                onProgress: (fraction) => setGtfProgress(fraction),
+                onGenes: (chunk) => { for (const g of chunk) map.set(g.id, g); },
+            });
             setExonIndexById(map);
-            setStatus(`${genes.length.toLocaleString()} genes loaded${anyBamReady ? "" : " - load BAM+BAI files to query reads"}`);
+            setExonFileName(file.name);
+            setGtfProgress(null);
+            if (!anyBamReady) setStatus("Load BAM+BAI files to query reads");
         } catch (err) {
-            console.error("Could not parse exon index JSON", err);
-            setStatus("Failed to parse exon index JSON");
+            console.error("Could not parse GTF", err);
+            setGtfProgress(null);
+            setStatus("Failed to parse GTF: " + (err as Error).message);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [anyBamReady]);
 
+    const handleExonIndexFile = useCallback(async (file: File) => {
+        if (/\.json$/i.test(file.name)) {
+            lastGtfFileRef.current = null;
+            try {
+                const text = await file.text();
+                const genes: ExonGene[] = JSON.parse(text);
+                const map = new Map<string, ExonGene>();
+                for (const g of genes) map.set(g.id, g);
+                setExonIndexById(map);
+                setExonFileName(file.name);
+                if (!anyBamReady) setStatus("Load BAM+BAI files to query reads");
+            } catch (err) {
+                console.error("Could not parse exon index JSON", err);
+                setStatus("Failed to parse exon index JSON");
+            }
+            return;
+        }
+        lastGtfFileRef.current = file;
+        await parseGtfWithLevel(file, tslLevel);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [anyBamReady, tslLevel, parseGtfWithLevel]);
+
+    const handleTslLevelChange = useCallback((level: string) => {
+        setTslLevel(level);
+        if (lastGtfFileRef.current) parseGtfWithLevel(lastGtfFileRef.current, level);
+    }, [parseGtfWithLevel]);
+
     const runQuery = useCallback(async (geneId: string, sourceId: string, geneMap: Map<string, ExonGene>) => {
-        setSources((prev) => prev.map((s) => (s.id === sourceId ? { ...s, queryLoading: true, queryError: null, records: null } : s)));
+        setSources((prev) => prev.map((s) => (s.id === sourceId ? { ...s, queryLoading: true, queryError: null, records: null, queriedGeneId: geneId } : s)));
 
         const token = (queryTokensRef.current.get(sourceId) ?? 0) + 1;
         queryTokensRef.current.set(sourceId, token);
@@ -114,14 +157,14 @@ export default function App() {
                     const chromToRefID = new Map(refNames.map((name, i) => [name, i]));
                     return {
                         id, label: bamFile.name, file: bamFile, refNames, chromToRefID, refIndex,
-                        ready: true, records: null, queryLoading: false, queryError: null, locked: true,
+                        ready: true, records: null, queryLoading: false, queryError: null, queriedGeneId: null,
                     };
                 } catch (err) {
                     console.error(err);
                     return {
                         id, label: bamFile.name, file: bamFile, refNames: [], chromToRefID: new Map(), refIndex: [],
                         ready: false, records: null, queryLoading: false,
-                        queryError: "Failed to load BAM/BAI: " + (err as Error).message, locked: true,
+                        queryError: "Failed to load BAM/BAI: " + (err as Error).message, queriedGeneId: null,
                     };
                 }
             }),
@@ -129,144 +172,115 @@ export default function App() {
 
         setSources((prev) => [...prev, ...newSources]);
 
-        const readyCount = newSources.filter((s) => s.ready).length;
+        // Fill any empty panel slots with the newly loaded BAMs, in order; anything past the
+        // 4 slots just sits in the pool, still selectable from any slot's dropdown.
+        const readyIds = newSources.filter((s) => s.ready).map((s) => s.id);
+        setSlots((prev) => {
+            const next = [...prev];
+            let idx = 0;
+            for (let i = 0; i < next.length && idx < readyIds.length; i++) {
+                if (next[i].sourceId === null) {
+                    next[i] = { ...next[i], sourceId: readyIds[idx] };
+                    idx++;
+                }
+            }
+            return next;
+        });
+
+        const readyCount = readyIds.length;
         setStatus(readyCount > 0
             ? `${readyCount} BAM${readyCount > 1 ? "s" : ""} ready - select a gene to query its region`
             : "Failed to load one or more BAM/BAI files");
-
-        if (currentGeneId) {
-            for (const s of newSources) if (s.ready) runQuery(currentGeneId, s.id, exonIndexById);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentGeneId, exonIndexById, runQuery]);
+    }, []);
 
     const handleSelectGene = useCallback((geneId: string) => {
         setCurrentGeneId(geneId);
         setViewingGeneId(geneId);
         setSharedView(null);
-        for (const s of sources) if (s.ready) runQuery(geneId, s.id, exonIndexById);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sources, exonIndexById, runQuery]);
-
-    const toggleLock = useCallback((sourceId: string) => {
-        setSources((prev) => prev.map((s) => (s.id === sourceId ? { ...s, locked: !s.locked } : s)));
     }, []);
 
-    const handlePanelViewChange = useCallback((sourceId: string, next: { start: number; end: number }) => {
-        setSources((prev) => {
-            const source = prev.find((s) => s.id === sourceId);
-            if (source?.locked) setSharedView(next);
+    const handleSlotSourceChange = useCallback((slotIndex: number, sourceId: string | null) => {
+        setSlots((prev) => prev.map((slot, i) => (i === slotIndex ? { ...slot, sourceId } : slot)));
+    }, []);
+
+    const toggleSlotLock = useCallback((slotIndex: number) => {
+        setSlots((prev) => prev.map((slot, i) => (i === slotIndex ? { ...slot, locked: !slot.locked } : slot)));
+    }, []);
+
+    const handlePanelViewChange = useCallback((slotIndex: number, next: { start: number; end: number }) => {
+        setSlots((prev) => {
+            if (prev[slotIndex]?.locked) setSharedView(next);
             return prev;
         });
     }, []);
 
-    const handlePeaksChange = useCallback((sourceId: string, peaks: Map<string, number>) => {
-        setPeaksBySource((prev) => {
+    const handlePeaksChange = useCallback((slotIndex: number, peaks: Map<string, number>) => {
+        setPeaksBySlot((prev) => {
             const next = new Map(prev);
-            next.set(sourceId, peaks);
+            next.set(slotIndex, peaks);
             return next;
         });
     }, []);
 
-    // Stable per-source callback identity (AlignmentCanvas only re-reports peaks when its own
+    // Stable per-slot callback identity (AlignmentCanvas only re-reports peaks when its own
     // values change, so this doesn't need to change every render to avoid a report/re-render loop).
-    function getPeaksCallback(sourceId: string) {
-        let fn = peaksCallbacksRef.current.get(sourceId);
+    function getPeaksCallback(slotIndex: number) {
+        let fn = peaksCallbacksRef.current.get(slotIndex);
         if (!fn) {
-            fn = (peaks: Map<string, number>) => handlePeaksChange(sourceId, peaks);
-            peaksCallbacksRef.current.set(sourceId, fn);
+            fn = (peaks: Map<string, number>) => handlePeaksChange(slotIndex, peaks);
+            peaksCallbacksRef.current.set(slotIndex, fn);
         }
         return fn;
     }
 
     const sharedPeaks = useMemo(() => {
         const merged = new Map<string, number>();
-        for (const peaks of peaksBySource.values()) {
+        for (const peaks of peaksBySlot.values()) {
             for (const [id, v] of peaks) merged.set(id, Math.max(merged.get(id) ?? 0, v));
         }
         return merged;
-    }, [peaksBySource]);
+    }, [peaksBySlot]);
 
-    function reorder(draggedId: string, targetId: string) {
-        if (draggedId === targetId) return;
-        setSources((prev) => {
-            const next = [...prev];
-            const fromIdx = next.findIndex((s) => s.id === draggedId);
-            const toIdx = next.findIndex((s) => s.id === targetId);
-            if (fromIdx === -1 || toIdx === -1) return prev;
-            const [moved] = next.splice(fromIdx, 1);
-            next.splice(toIdx, 0, moved);
-            return next;
-        });
-    }
-
-    function handleHeaderDragStart(id: string) {
-        return (e: DragEvent<HTMLDivElement>) => {
-            setDragId(id);
-            e.dataTransfer.effectAllowed = "move";
-        };
-    }
-
-    function handleHeaderDragOver(id: string) {
-        return (e: DragEvent<HTMLDivElement>) => {
-            if (!dragId || dragId === id) return;
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "move";
-            setDropTargetId(id);
-        };
-    }
-
-    function handleHeaderDrop(id: string) {
-        return (e: DragEvent<HTMLDivElement>) => {
-            e.preventDefault();
-            if (dragId) reorder(dragId, id);
-            setDragId(null);
-            setDropTargetId(null);
-        };
-    }
-
-    function handleHeaderDragEnd() {
-        setDragId(null);
-        setDropTargetId(null);
-    }
-
-    // Re-run automatically for any BAM that finishes loading while a gene is already selected
+    // Single source of truth for querying: runs whenever the selected gene, the slot
+    // assignments, or the source pool change, and queries any slot-assigned, ready source
+    // whose records don't already reflect the current gene.
     useEffect(() => {
         if (!currentGeneId) return;
-        for (const s of sources) {
-            if (s.ready && s.records === null && !s.queryLoading && !s.queryError) runQuery(currentGeneId, s.id, exonIndexById);
+        const assignedIds = new Set(slots.map((s) => s.sourceId).filter((id): id is string => id !== null));
+        for (const source of sources) {
+            if (!assignedIds.has(source.id) || !source.ready || source.queryLoading) continue;
+            if (source.queriedGeneId === currentGeneId) continue;
+            runQuery(currentGeneId, source.id, exonIndexById);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sources.map((s) => s.id + s.ready).join(",")]);
+    }, [currentGeneId, slots, sources, exonIndexById]);
 
     const currentGene = currentGeneId ? exonIndexById.get(currentGeneId) ?? null : null;
     const viewingGene = viewingGeneId ? exonIndexById.get(viewingGeneId) ?? null : null;
-    const lockableCount = sources.length;
+    const assignedCount = slots.filter((s) => s.sourceId !== null).length;
+    const sourceOptions = useMemo(() => sources.map((s) => ({ id: s.id, label: s.label })), [sources]);
 
-    function renderPanel(source: BamSource, gene: ExonGene) {
+    function renderSlot(slotIndex: number) {
+        const slot = slots[slotIndex];
+        const source = slot.sourceId ? sources.find((s) => s.id === slot.sourceId) ?? null : null;
         return (
             <AlignmentPanel
-                label={source.label}
-                gene={gene}
-                records={source.records}
-                loading={source.queryLoading}
-                error={source.queryError}
+                key={slotIndex}
+                gene={viewingGene}
+                sourceOptions={sourceOptions}
+                selectedSourceId={slot.sourceId}
+                onSelectSource={(id) => handleSlotSourceChange(slotIndex, id)}
+                records={source?.records ?? null}
+                loading={source?.queryLoading ?? false}
+                error={source?.queryError ?? null}
                 exonIndexById={exonIndexById}
-                locked={source.locked}
+                locked={slot.locked}
                 sharedView={sharedView}
-                onViewChange={(v) => handlePanelViewChange(source.id, v)}
+                onViewChange={(v) => handlePanelViewChange(slotIndex, v)}
                 sharedPeaks={sharedPeaks}
-                onPeaksChange={getPeaksCallback(source.id)}
-                onToggleLock={() => toggleLock(source.id)}
-                showLock={lockableCount > 1}
-                draggable={lockableCount > 1}
-                isDragging={dragId === source.id}
-                isDropTarget={dropTargetId === source.id && dragId !== source.id}
-                onHeaderDragStart={handleHeaderDragStart(source.id)}
-                onHeaderDragOver={handleHeaderDragOver(source.id)}
-                onHeaderDragLeave={() => setDropTargetId((cur) => (cur === source.id ? null : cur))}
-                onHeaderDrop={handleHeaderDrop(source.id)}
-                onHeaderDragEnd={handleHeaderDragEnd}
+                onPeaksChange={getPeaksCallback(slotIndex)}
+                onToggleLock={() => toggleSlotLock(slotIndex)}
+                showLock={assignedCount > 1}
             />
         );
     }
@@ -275,10 +289,13 @@ export default function App() {
         <>
             <Header
                 exonFileName={exonFileName}
+                gtfProgress={gtfProgress}
                 bamFileLabel={bamFileLabel}
                 exonIndexReady={exonIndexById.size > 0}
                 exonIndexById={exonIndexById}
                 status={status}
+                tslLevel={tslLevel}
+                onTslLevelChange={handleTslLevelChange}
                 onExonIndexFile={handleExonIndexFile}
                 onBamBaiFiles={handleBamBaiFiles}
                 onSelectGene={handleSelectGene}
@@ -298,46 +315,17 @@ export default function App() {
 
             {viewingGene && sources.length > 0 ? (
                 <div id="panelArea">
-                    {sources.length === 1 ? (
-                        <div className="single-panel-wrap">{renderPanel(sources[0], viewingGene)}</div>
-                    ) : (
-                        <Group orientation="vertical" className="panel-grid-outer">
-                            {(() => {
-                                const rows = computeRows(sources.length);
-                                let offset = 0;
-                                const rowNodes: ReactNode[] = [];
-                                rows.forEach((rowCount, rowIdx) => {
-                                    const rowSources = sources.slice(offset, offset + rowCount);
-                                    offset += rowCount;
-                                    if (rowIdx > 0) rowNodes.push(<Separator key={`vsep-${rowIdx}`} className="resize-separator resize-separator-vertical" />);
-                                    rowNodes.push(
-                                        <Panel key={`row-${rowIdx}`} minSize="15" className="panel-row">
-                                            <Group orientation="horizontal" className="panel-grid-row">
-                                                {rowSources.map((s, i) => {
-                                                    const nodes: ReactNode[] = [];
-                                                    if (i > 0) nodes.push(<Separator key={`hsep-${s.id}`} className="resize-separator resize-separator-horizontal" />);
-                                                    nodes.push(
-                                                        <Panel key={s.id} minSize="15" className="panel-col">
-                                                            {renderPanel(s, viewingGene)}
-                                                        </Panel>,
-                                                    );
-                                                    return nodes;
-                                                })}
-                                            </Group>
-                                        </Panel>,
-                                    );
-                                });
-                                return rowNodes;
-                            })()}
-                        </Group>
-                    )}
+                    <div className="panel-grid-2x2">
+                        {slots.map((_, i) => renderSlot(i))}
+                    </div>
                 </div>
             ) : (
                 <div id="placeholder">
-                    Load an exon index (from build_exon_index.py) to get an instant, searchable gene list with
-                    coordinates. Then load one or more BAM files together with their .bai. Selecting a gene queries
-                    just that region through each index - no need to scan the whole file - and shows the known
-                    transcript models alongside the actual reads, side by side across BAM files.
+                    Load a GTF (optionally filtered by transcript support level) to get an instant, searchable gene
+                    list with coordinates. Then load one or more BAM files together with their .bai. Selecting a
+                    gene queries just that region through each index - no need to scan the whole file - and shows
+                    the known transcript models alongside the actual reads, in up to 4 panels at once, each with
+                    its own BAM picker.
                 </div>
             )}
         </>

@@ -35,6 +35,7 @@ select, input[type=text] {
 }
 
 label.file-label {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -44,12 +45,39 @@ label.file-label {
     border-radius: 6px;
     padding: 6px 10px;
     cursor: pointer;
+    overflow: hidden;
 }
 label.file-label:hover { border-color: var(--accent); color: var(--accent); }
 label.file-label input { display: none; }
 label.file-label .fname { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+label.file-label .file-label-text {
+    position: relative;
+    z-index: 1;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+label.file-label .progress-fill {
+    position: absolute;
+    inset: 0;
+    width: 0%;
+    background: rgba(37, 99, 235, 0.18);
+    transition: width 0.15s linear;
+}
+label.file-label-progress { cursor: default; }
 
-#geneSearchWrap { position: relative; flex: 1; min-width: 260px; }
+.tsl-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+}
+.tsl-label select { padding: 5px 7px; font-size: 12px; }
+
+#geneSearchWrap { position: relative; flex: 1; min-width: 180px; }
 #geneSearch { width: 100%; box-sizing: border-box; }
 #geneSearch:disabled { background: #f0f1f3; color: var(--muted); }
 #suggestions {
@@ -143,41 +171,24 @@ label.file-label .fname { max-width: 220px; overflow: hidden; text-overflow: ell
     min-height: 420px;
 }
 
-.single-panel-wrap {
+.panel-grid-2x2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 10px;
     height: 100%;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    overflow: hidden;
-    background: var(--panel);
 }
-
-.panel-grid-outer, .panel-grid-row { height: 100%; }
-.panel-row { overflow: hidden; }
-.panel-col {
-    overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--panel);
-    display: flex;
-    flex-direction: column;
-}
-
-.resize-separator {
-    background: var(--border);
-    flex-shrink: 0;
-}
-.resize-separator-vertical { height: 6px; margin: 6px 0; cursor: row-resize; border-radius: 3px; }
-.resize-separator-horizontal { width: 6px; margin: 0 6px; cursor: col-resize; border-radius: 3px; }
-.resize-separator[data-active], .resize-separator:hover { background: var(--accent); }
 
 .alignment-panel {
     display: flex;
     flex-direction: column;
     height: 100%;
     min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
 }
-.alignment-panel.dragging { opacity: 0.5; }
-.alignment-panel.drop-target .alignment-panel-header { outline: 2px dashed var(--accent); outline-offset: -2px; }
 
 .alignment-panel-header {
     display: flex;
@@ -189,16 +200,13 @@ label.file-label .fname { max-width: 220px; overflow: hidden; text-overflow: ell
     font-size: 12px;
     flex-shrink: 0;
 }
-.drag-handle { cursor: grab; color: var(--muted); font-size: 14px; user-select: none; }
-.drag-handle:active { cursor: grabbing; }
-.panel-filename {
-    font-weight: 600;
-    color: var(--text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.panel-source-select {
     flex: 1;
     min-width: 0;
+    font-weight: 600;
+    color: var(--text);
+    padding: 4px 6px;
+    font-size: 12px;
 }
 .lock-toggle {
     flex-shrink: 0;
@@ -255,6 +263,7 @@ label.file-label .fname { max-width: 220px; overflow: hidden; text-overflow: ell
 .plot-footer-spacer { height: 160px; }
 
 canvas { display: block; }
+canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 #tooltip {
     position: fixed;

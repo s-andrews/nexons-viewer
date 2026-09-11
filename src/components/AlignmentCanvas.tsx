@@ -864,14 +864,14 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         tooltipRef.current.style.top = Math.max(4, top) + "px";
     }, [tooltip]);
 
-    function handleWheel(evt: React.WheelEvent<HTMLCanvasElement>) {
+    function handleWheel(evt: WheelEvent) {
         // Trackpad two-finger scroll fires plain wheel events indistinguishable from a mouse
         // wheel except by gesture; only pinch-to-zoom (ctrlKey) or an explicit modifier zooms.
         // A plain scroll passes through so the panel's own vertical scrollbar handles it -
         // otherwise scrolling through a tall track (many transcripts/variants) fights with zoom.
         if (!evt.ctrlKey && !evt.metaKey) return;
         evt.preventDefault();
-        const rect = evt.currentTarget.getBoundingClientRect();
+        const rect = (evt.currentTarget as HTMLCanvasElement).getBoundingClientRect();
         const mx = evt.clientX - rect.left;
         const curWidth = effectiveView.end - effectiveView.start;
         const cursorGenomic = effectiveView.start + ((mx - marginL) / (width - marginL - MARGIN_R)) * curWidth;
@@ -882,6 +882,24 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         const [s, e] = clampView(newStart, newStart + newWidth);
         updateView({ start: s, end: e });
     }
+
+    // React control zooming into each panel
+
+    const handleWheelRef = useRef(handleWheel);
+    handleWheelRef.current = handleWheel;
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        function onWheel(evt: WheelEvent) {
+            handleWheelRef.current(evt);
+        }
+
+        canvas.addEventListener("wheel", onWheel, { passive:false });
+        return () => canvas.removeEventListener("wheel", onWheel);
+    }, []);
+
+    //
 
     function handleMouseDown(evt: React.MouseEvent<HTMLCanvasElement>) {
         const rect = evt.currentTarget.getBoundingClientRect();
@@ -939,6 +957,22 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         }
     }
 
+    // Left/Right arrows pan; Ctrl/Cmd+Left/Right zoom out/in.
+    function handleCanvasKeyDown(evt: React.KeyboardEvent<HTMLCanvasElement>) {
+        if (evt.key !== "ArrowRight" && evt.key !== "ArrowLeft") return;
+        evt.preventDefault();
+
+        const zoom = evt.ctrlKey || evt.metaKey;
+        const forward = evt.key === "ArrowRight";
+
+        if (zoom) {
+            const curWidth = effectiveView.end - effectiveView.start;
+            setViewWidth(curWidth * (forward ? 0.8 : 1.2));
+        } else {
+            panByFraction(forward ? 0.25 : -0.25);
+        }
+    }
+
     return (
         <div id="plot-container" ref={containerRef}>
             <div className="plot-toolbar">
@@ -947,19 +981,21 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                         <option key={lvl.label} value={lvl.bp ?? ""}>{lvl.label}</option>
                     ))}
                 </select>
-                <button type="button" className="pan-btn" title="Pan left by 75% of the visible range" onClick={() => panByFraction(-0.75)}>◀ 75%</button>
-                <button type="button" className="pan-btn" title="Pan right by 75% of the visible range" onClick={() => panByFraction(0.75)}>75% ▶</button>
-                <span className="plot-hint">ctrl/⌘+scroll to zoom · drag to pan · double-click to reset</span>
+                <button type="button" className="pan-btn" title="Pan left by 75% of the visible range" onClick={() => panByFraction(-0.75)}>◀</button>
+                <button type="button" className="pan-btn" title="Pan right by 75% of the visible range" onClick={() => panByFraction(0.75)}>▶</button>
+                <span className="plot-hint">ctrl/⌘+scroll or ←/→ to zoom · drag or click+←/→ to pan · double-click to reset</span>
             </div>
 
             <canvas
                 ref={canvasRef}
-                onWheel={handleWheel}
+                tabIndex={0}
+                // onWheel={handleWheel}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseLeave={() => { setTooltip(null); setHoverToggle(false); }}
                 onDoubleClick={handleDoubleClick}
                 style={{ cursor: draggingRef.current ? "grabbing" : hoverToggle ? "pointer" : "default" }}
+                onKeyDown={handleCanvasKeyDown}
             />
 
             <div className="plot-footer-spacer" />

@@ -1,10 +1,16 @@
-import type { DragEvent } from "react";
 import type { BamRecord, ExonGene } from "../types";
 import AlignmentCanvas from "./AlignmentCanvas";
 
-interface AlignmentPanelProps {
+export interface PanelSourceOption {
+    id: string;
     label: string;
-    gene: ExonGene;
+}
+
+interface AlignmentPanelProps {
+    gene: ExonGene | null;
+    sourceOptions: PanelSourceOption[];
+    selectedSourceId: string | null;
+    onSelectSource: (id: string | null) => void;
     records: BamRecord[] | null;
     loading: boolean;
     error: string | null;
@@ -16,19 +22,13 @@ interface AlignmentPanelProps {
     onPeaksChange: (peaks: Map<string, number>) => void;
     onToggleLock: () => void;
     showLock: boolean;
-    draggable: boolean;
-    isDragging: boolean;
-    isDropTarget: boolean;
-    onHeaderDragStart: (e: DragEvent<HTMLDivElement>) => void;
-    onHeaderDragOver: (e: DragEvent<HTMLDivElement>) => void;
-    onHeaderDragLeave: (e: DragEvent<HTMLDivElement>) => void;
-    onHeaderDrop: (e: DragEvent<HTMLDivElement>) => void;
-    onHeaderDragEnd: (e: DragEvent<HTMLDivElement>) => void;
 }
 
 export default function AlignmentPanel({
-    label,
     gene,
+    sourceOptions,
+    selectedSourceId,
+    onSelectSource,
     records,
     loading,
     error,
@@ -40,28 +40,20 @@ export default function AlignmentPanel({
     onPeaksChange,
     onToggleLock,
     showLock,
-    draggable,
-    isDragging,
-    isDropTarget,
-    onHeaderDragStart,
-    onHeaderDragOver,
-    onHeaderDragLeave,
-    onHeaderDrop,
-    onHeaderDragEnd,
 }: AlignmentPanelProps) {
     return (
-        <div className={"alignment-panel" + (isDragging ? " dragging" : "") + (isDropTarget ? " drop-target" : "")}>
-            <div
-                className="alignment-panel-header"
-                draggable={draggable}
-                onDragStart={onHeaderDragStart}
-                onDragOver={onHeaderDragOver}
-                onDragLeave={onHeaderDragLeave}
-                onDrop={onHeaderDrop}
-                onDragEnd={onHeaderDragEnd}
-            >
-                {draggable && <span className="drag-handle" title="Drag to reorder panels">⠿</span>}
-                <span className="panel-filename" title={label}>{label}</span>
+        <div className="alignment-panel">
+            <div className="alignment-panel-header">
+                <select
+                    className="panel-source-select"
+                    value={selectedSourceId ?? ""}
+                    onChange={(e) => onSelectSource(e.target.value === "" ? null : e.target.value)}
+                >
+                    <option value="">— empty —</option>
+                    {sourceOptions.map((s) => (
+                        <option key={s.id} value={s.id} title={s.label}>{s.label}</option>
+                    ))}
+                </select>
                 {showLock && (
                     <button
                         type="button"
@@ -74,7 +66,11 @@ export default function AlignmentPanel({
                 )}
             </div>
             <div className="alignment-panel-body">
-                {error ? (
+                {!selectedSourceId ? (
+                    <div className="panel-message">Select a BAM file</div>
+                ) : !gene ? (
+                    <div className="panel-message">Select a gene</div>
+                ) : error ? (
                     <div className="panel-message panel-message-error">{error}</div>
                 ) : loading || !records ? (
                     <div className="panel-message">Querying BAM…</div>
