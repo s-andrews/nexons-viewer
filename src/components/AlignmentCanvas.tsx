@@ -205,8 +205,9 @@ function computeMaxDepth(reads: BamRecord[]): number {
 }
 
 // Fixed track height regardless of the lane's absolute depth (a peak of 3 and a peak of 3000
-// both fill the band) - the peak value is printed at the top of the band so the scale is legible.
-function drawDensityTrack(ctx: CanvasRenderingContext2D, marginL: number, pxFrom: number, depth: Float64Array, peak: number, trackY: number, trackH: number) {
+// both fill the band) - the peak value is printed at the left edge of the band, right where the
+// bars themselves start, so the scale is legible.
+function drawDensityTrack(ctx: CanvasRenderingContext2D, pxFrom: number, depth: Float64Array, peak: number, trackY: number, trackH: number) {
     ctx.fillStyle = "rgba(37,99,235,0.55)";
     for (let i = 0; i < depth.length; i++) {
         if (depth[i] <= 0) continue;
@@ -217,11 +218,13 @@ function drawDensityTrack(ctx: CanvasRenderingContext2D, marginL: number, pxFrom
     ctx.lineWidth = 1;
     ctx.strokeRect(pxFrom + 0.5, trackY + 0.5, Math.max(1, depth.length - 1), trackH - 1);
 
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, trackY - 1, marginL - 2, 12);
-    ctx.fillStyle = "#374151";
+    const label = Math.round(peak).toLocaleString();
     ctx.font = "600 10px -apple-system, sans-serif";
-    ctx.fillText(`${Math.round(peak).toLocaleString()}×`, 4, trackY + 9);
+    const labelWidth = ctx.measureText(label).width;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(pxFrom + 2, trackY - 1, labelWidth + 4, 12);
+    ctx.fillStyle = "#374151";
+    ctx.fillText(label, pxFrom + 4, trackY + 9);
 }
 
 // Confidence (nR) is shown as fill style rather than hue, since hue is reserved for gene
@@ -754,7 +757,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                 // density track sits above its transcript's exon row and stays put whether
                 // collapsed or expanded, so the row doesn't jump out from under the mouse on toggle
                 if (hasDensity(t.id)) {
-                    drawDensityTrack(ctx, marginL, pxFrom, lane.density!, displayPeaks.get(t.id) ?? 0, y, DENSITY_TRACK_H);
+                    drawDensityTrack(ctx, pxFrom, lane.density!, displayPeaks.get(t.id) ?? 0, y, DENSITY_TRACK_H);
                     y += DENSITY_TRACK_H + DENSITY_GAP;
                 }
                 drawExonRow(y);
@@ -787,7 +790,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                 };
 
                 if (hasDensity(UNASSIGNED_ID)) {
-                    drawDensityTrack(ctx, marginL, pxFrom, lane.density!, displayPeaks.get(UNASSIGNED_ID) ?? 0, y, DENSITY_TRACK_H);
+                    drawDensityTrack(ctx, pxFrom, lane.density!, displayPeaks.get(UNASSIGNED_ID) ?? 0, y, DENSITY_TRACK_H);
                     y += DENSITY_TRACK_H + DENSITY_GAP;
                 }
                 drawMergedExonRow(y);

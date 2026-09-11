@@ -53,10 +53,13 @@ interface ParseState {
 function finalizeCurrentGene(state: ParseState) {
     if (!state.currentGene) return;
     for (const transcript of state.currentTranscripts.values()) {
+        if (transcript.exons.length === 0) continue; // never got an exon (e.g. its only exon rows were malformed) - nothing to draw
         transcript.exons.sort((a, b) => a[0] - b[0]);
         state.currentGene.transcripts.push(transcript);
     }
-    state.chunk.push(state.currentGene);
+    // Only emit genes that ended up with at least one transcript, matching build_exon_index.py -
+    // which only ever sees a gene through its exon rows, so a gene with none simply never appears.
+    if (state.currentGene.transcripts.length > 0) state.chunk.push(state.currentGene);
     state.currentGene = null;
     state.currentTranscripts = new Map();
 }
@@ -84,7 +87,18 @@ function processLine(line: string, state: ParseState) {
         if (!tid) return;
         // Absent when the transcript's own line was filtered out by the TSL threshold.
         const transcript = state.currentTranscripts.get(tid);
-        if (transcript) transcript.exons.push([start, end]);
+        if (!transcript) return;
+        transcript.exons.push([start, end]);
+        // Transcript/gene span is the union of their exons, not whatever the dedicated
+        // "transcript"/"gene" GTF rows happened to declare - some GTFs declare a wider span
+        // (e.g. covering a first/last intron) than the exons actually reach, which left a gap
+        // between the drawn baseline's end and the first/last exon rectangle.
+        if (start < transcript.start) transcript.start = start;
+        if (end > transcript.end) transcript.end = end;
+        if (state.currentGene) {
+            if (start < state.currentGene.start) state.currentGene.start = start;
+            if (end > state.currentGene.end) state.currentGene.end = end;
+        }
         return;
     }
 
@@ -102,7 +116,8 @@ function processLine(line: string, state: ParseState) {
         if (!gid) gid = gname;
         if (!gname) gname = gid;
         const chrom = line.slice(0, t1);
-        state.currentGene = { id: gid!, name: gname!, chrom, start, end, strand, transcripts: [] };
+        // start/end are placeholders, widened to the union of this gene's exons as they arrive.
+        state.currentGene = { id: gid!, name: gname!, chrom, start: Infinity, end: -Infinity, strand, transcripts: [] };
         return;
     }
 
@@ -119,7 +134,8 @@ function processLine(line: string, state: ParseState) {
         if (tsl === null || tsl > state.maxTsl) return;
     }
 
-    state.currentTranscripts.set(tid!, { id: tid!, name: tname!, start, end, exons: [] });
+    // start/end are placeholders too, widened to the union of this transcript's own exons.
+    state.currentTranscripts.set(tid!, { id: tid!, name: tname!, start: Infinity, end: -Infinity, exons: [] });
 }
 
 const PROGRESS_INTERVAL = 8 << 20; // report roughly every 8MB of decoded text
