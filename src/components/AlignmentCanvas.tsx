@@ -250,6 +250,35 @@ function drawReadRow(ctx: CanvasRenderingContext2D, r: PackedRead, rowY: number,
     hitRects.push({ x1: scaleX(r.start), x2: scaleX(r.end), y1: rowY, y2: rowY + ROW_H, kind: "read", read: r });
 }
 
+// Evenly spaced chevrons along a bar showing which way the gene is transcribed, in the style
+// of a genome browser's strand indicator - clipped to the visible plot area so a very wide or
+// partly off-screen bar doesn't loop over off-canvas positions.
+function drawStrandArrows(ctx: CanvasRenderingContext2D, x1: number, x2: number, rowY: number, rowH: number, strand: string, plotFrom: number, plotTo: number) {
+    const left = Math.max(x1, plotFrom);
+    const right = Math.min(x2, plotTo);
+    if (right - left < 10) return;
+
+    const arrowH = rowH * 0.8;
+    const halfH = arrowH / 2;
+    const midY = rowY + rowH / 2;
+    const spacing = 18;
+    const arrowW = 5;
+    const dir = strand === "-" ? -1 : 1;
+
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1.3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    const start = Math.ceil((left + spacing / 2) / spacing) * spacing;
+    for (let cx = start; cx < right - spacing / 2; cx += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(cx - (dir * arrowW) / 2, midY - halfH);
+        ctx.lineTo(cx + (dir * arrowW) / 2, midY);
+        ctx.lineTo(cx - (dir * arrowW) / 2, midY + halfH);
+        ctx.stroke();
+    }
+}
+
 // The toggle hit region spans the full plot width (not just the label) so clicking anywhere
 // on a transcript's exon-model bar expands/collapses it, not just the small text label.
 function drawToggleLabel(
@@ -602,6 +631,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
             const gx2 = scaleX(gene.end);
             ctx.fillStyle = "#0e7490";
             ctx.fillRect(gx1, y, Math.max(1, gx2 - gx1), GENE_REGION_ROW_H);
+            drawStrandArrows(ctx, gx1, gx2, y, GENE_REGION_ROW_H, gene.strand, pxFrom, pxTo);
 
             ctx.fillStyle = "#ffffff";
             ctx.fillRect(0, y - 1, marginL - 2, GENE_REGION_ROW_H + 2);
