@@ -5,11 +5,7 @@
     --text: #1f2933;
     --muted: #6b7280;
     --accent: #2563eb;
-    --unique: 50,160,50;
-    --partial: 230,159,0;
-    --gene: 140,140,140;
-    --multi: 200,50,50;
-    --none: 100,120,200;
+    --gene-neutral: 140,140,140;
 }
 
 body {
@@ -98,6 +94,10 @@ label.file-label .fname { max-width: 220px; overflow: hidden; text-overflow: ell
 #legend .item { display: flex; align-items: center; gap: 5px; }
 .box { width: 12px; height: 10px; border-radius: 2px; display: inline-block; vertical-align: middle; }
 .box.secondary { border: 1px dashed rgba(0,0,0,0.5); background: repeating-linear-gradient(45deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 2px, transparent 2px, transparent 4px); }
+.box.style-unique { background: rgb(var(--gene-neutral)); }
+.box.style-partial { background: repeating-linear-gradient(45deg, rgba(var(--gene-neutral),0.9), rgba(var(--gene-neutral),0.9) 2px, transparent 2px, transparent 4px); border: 1px solid rgba(var(--gene-neutral),0.9); }
+.box.style-gene { background: transparent; border: 1.5px solid rgb(var(--gene-neutral)); }
+.box.style-multi { background: rgba(var(--gene-neutral),0.25); border: 1px dotted rgba(var(--gene-neutral),0.85); }
 
 #geneTitle { font-size: 13px; font-weight: 600; margin: 16px 20px 0 20px; color: var(--text); }
 #geneSubtitle { font-size: 12px; color: var(--muted); margin: 2px 20px 0 20px; }

@@ -6,13 +6,35 @@ import type { BamRecord, CigarOp, ExonGene, ExonTranscript } from "../types";
 // would re-fire the peaks-reporting effect every render too.
 const EMPTY_TRANSCRIPTS: ExonTranscript[] = [];
 
-const NR_COLORS: Record<string, string> = {
-    unique: "50,160,50",
-    partial: "230,159,0",
-    gene: "140,140,140",
-    multi: "200,50,50",
-};
-const NO_MATCH_COLOR = "100,120,200";
+// Reads sharing a gene (nG) share a hue, so an overlapping gene's reads (parked in the
+// "no match to this gene" lane) can be visually traced back to which nearby gene they actually
+// belong to. Confidence (nR: unique/partial/gene/multi) is shown as fill *style* instead of hue -
+// see drawConfidenceBlock. "multi" reads may be compatible with more than one gene (per
+// nexons.py, not just one transcript), so they don't get a gene hue at all.
+const GENE_HUE_PALETTE = [
+    "31,119,180", "255,127,14", "44,160,44", "214,39,40", "148,103,189",
+    "140,86,75", "227,119,194", "188,189,34", "23,190,207", "241,143,1",
+];
+const NEUTRAL_GRAY = "140,140,140";
+
+function hashStringToIndex(s: string, mod: number): number {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return Math.abs(h) % mod;
+}
+
+function colorForGene(geneId: string | undefined): string {
+    if (!geneId) return NEUTRAL_GRAY;
+    return GENE_HUE_PALETTE[hashStringToIndex(geneId, GENE_HUE_PALETTE.length)];
+}
+
+function colorForRead(r: BamRecord): string {
+    const nR = typeof r.tags.nR === "string" ? r.tags.nR : undefined;
+    if (nR === "unique" || nR === "partial" || nR === "gene") {
+        return colorForGene(typeof r.tags.nG === "string" ? r.tags.nG : undefined);
+    }
+    return NEUTRAL_GRAY; // "multi" (ambiguous across genes) or no hit at all
+}
 
 // There's no genomics-standard color scheme for CIGAR text (the SAM spec defines the ops,
 // not a visual convention), so this stays plain except for a muted tone on clipped bases -
@@ -132,11 +154,6 @@ function packGeneItems(items: { start: number; end: number; gene: ExonGene }[], 
     return { items: sorted, rowCount: rowEndPx.length };
 }
 
-function readRgb(read: BamRecord): string {
-    const val = read.tags.nR;
-    return typeof val === "string" && NR_COLORS[val] ? NR_COLORS[val] : NO_MATCH_COLOR;
-}
-
 // Per-pixel-column read depth from each read's reference-consuming blocks (already split at
 // N, so splice gaps don't count as covered). Secondary alignments are excluded so depth
 // reflects actual coverage rather than being inflated by multi-mapping placements. This is
@@ -207,11 +224,67 @@ function drawDensityTrack(ctx: CanvasRenderingContext2D, marginL: number, pxFrom
     ctx.fillText(`peak ${Math.round(peak).toLocaleString()}×`, 4, trackY + 9);
 }
 
+// Confidence (nR) is shown as fill style rather than hue, since hue is reserved for gene
+// identity: "unique" is a solid block, "partial" is a light diagonal hatch, "gene" (matched
+// only at the gene level, no specific transcript) is an outline with no fill, and "multi" /
+// no-hit is a dotted gray outline since it isn't tied to one gene's color. Secondary alignments
+// dim further and add a dashed border on top of whichever of these applies.
+function drawConfidenceBlock(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, rgb: string, nR: string | undefined, isSecondary: boolean) {
+    if (nR === "unique") {
+        ctx.fillStyle = `rgba(${rgb},${isSecondary ? 0.35 : 1})`;
+        ctx.fillRect(x, y, w, h);
+        if (isSecondary) {
+            ctx.strokeStyle = `rgb(${rgb})`;
+            ctx.setLineDash([2, 2]);
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, w - 1), h - 1);
+            ctx.setLineDash([]);
+        }
+    } else if (nR === "partial") {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x, y, w, h);
+        ctx.clip();
+        ctx.fillStyle = `rgba(${rgb},${isSecondary ? 0.12 : 0.22})`;
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = `rgba(${rgb},${isSecondary ? 0.5 : 0.9})`;
+        ctx.lineWidth = 1;
+        for (let sx = x - h; sx < x + w; sx += 4) {
+            ctx.beginPath();
+            ctx.moveTo(sx, y + h);
+            ctx.lineTo(sx + h, y);
+            ctx.stroke();
+        }
+        ctx.restore();
+        ctx.strokeStyle = `rgba(${rgb},${isSecondary ? 0.5 : 0.9})`;
+        ctx.lineWidth = 1;
+        if (isSecondary) ctx.setLineDash([2, 2]);
+        ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, w - 1), h - 1);
+        ctx.setLineDash([]);
+    } else if (nR === "gene") {
+        ctx.strokeStyle = `rgba(${rgb},${isSecondary ? 0.55 : 0.95})`;
+        ctx.lineWidth = 1.3;
+        if (isSecondary) ctx.setLineDash([2, 2]);
+        ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, w - 1), h - 1);
+        ctx.setLineDash([]);
+    } else {
+        // "multi" (ambiguous across genes) or no hit at all - neutral gray, dotted
+        ctx.fillStyle = `rgba(${rgb},${isSecondary ? 0.15 : 0.25})`;
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = `rgba(${rgb},${isSecondary ? 0.5 : 0.85})`;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([1, 2]);
+        ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, w - 1), h - 1);
+        ctx.setLineDash([]);
+    }
+}
+
 function drawReadRow(ctx: CanvasRenderingContext2D, r: PackedRead, rowY: number, scaleX: ScaleX, showCigarDetail: boolean, hitRects: HitRect[]) {
     const midY = rowY + ROW_H / 2;
-    const rgb = readRgb(r);
+    const rgb = colorForRead(r);
+    const nR = typeof r.tags.nR === "string" ? r.tags.nR : undefined;
 
-    ctx.strokeStyle = `rgba(${rgb},${r.isSecondary ? 0.5 : 0.9})`;
+    ctx.strokeStyle = `rgba(${rgb},${r.isSecondary ? 0.4 : 0.7})`;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(scaleX(r.start), midY);
@@ -222,24 +295,14 @@ function drawReadRow(ctx: CanvasRenderingContext2D, r: PackedRead, rowY: number,
         const x1 = scaleX(bStart);
         const x2 = scaleX(bEnd);
         const w = Math.max(1, x2 - x1);
-
-        if (r.isSecondary) {
-            ctx.fillStyle = `rgba(${rgb},0.35)`;
-            ctx.fillRect(x1, rowY, w, ROW_H);
-            ctx.strokeStyle = `rgb(${rgb})`;
-            ctx.setLineDash([2, 2]);
-            ctx.lineWidth = 1;
-            ctx.strokeRect(x1 + 0.5, rowY + 0.5, Math.max(0, w - 1), ROW_H - 1);
-            ctx.setLineDash([]);
-        } else {
-            ctx.fillStyle = `rgb(${rgb})`;
-            ctx.fillRect(x1, rowY, w, ROW_H);
-        }
+        drawConfidenceBlock(ctx, x1, rowY, w, ROW_H, rgb, nR, r.isSecondary);
     }
 
     if (showCigarDetail) drawCigarDetail(ctx, r, scaleX, rowY);
 
-    ctx.fillStyle = "#ffffff";
+    // A solid "unique" block is dark enough for a white arrow; the lighter/hollow styles need a
+    // dark arrow instead to stay visible against the page background showing through.
+    ctx.fillStyle = nR === "unique" ? "#ffffff" : "#374151";
     ctx.font = "9px monospace";
     const arrow = r.isReverse ? "‹" : "›";
     const cx = (scaleX(r.start) + scaleX(r.end)) / 2;

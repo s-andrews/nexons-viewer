@@ -2,11 +2,11 @@ export default function Legend() {
     return (
         <div id="legend">
             <div className="group">
-                <span className="item"><i className="box" style={{ background: "rgb(var(--unique))" }} /> unique</span>
-                <span className="item"><i className="box" style={{ background: "rgb(var(--partial))" }} /> partial</span>
-                <span className="item"><i className="box" style={{ background: "rgb(var(--gene))" }} /> gene-level only</span>
-                <span className="item"><i className="box" style={{ background: "rgb(var(--multi))" }} /> multi-gene</span>
-                <span className="item"><i className="box" style={{ background: "rgb(var(--none))" }} /> no match</span>
+                <span className="item">color = gene (nG)</span>
+                <span className="item"><i className="box style-unique" /> unique</span>
+                <span className="item"><i className="box style-partial" /> partial</span>
+                <span className="item"><i className="box style-gene" /> gene-level only</span>
+                <span className="item"><i className="box style-multi" /> multi-gene / no hit</span>
             </div>
             <div className="sep" />
             <div className="group">
