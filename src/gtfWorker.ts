@@ -42,6 +42,10 @@ function hasGoodTag(attrs: string): boolean {
     return false;
 }
 
+function hasManeTag(attrs: string): boolean {
+    return attrs.includes("MANE_Select");
+}
+
 const CHUNK_SIZE = 2000;
 
 interface ParseState {
@@ -97,12 +101,13 @@ function processExonLine(line: string, state: ParseState) {
 
     let transcript = state.transcriptsById.get(tid!);
     if (!transcript) {
-        transcript = { id: tid!, name: tname!, start, end, exons: [] };
+        transcript = { id: tid!, name: tname!, start, end, exons: [], isMane: hasManeTag(attrs) };
         state.transcriptsById.set(tid!, transcript);
         gene.transcripts.push(transcript);
     } else {
         if (start < transcript.start) transcript.start = start;
         if (end > transcript.end) transcript.end = end;
+        if (!transcript.isMane && hasManeTag(attrs)) transcript.isMane = true; // in case the first exon row lacked the tag
     }
 
     transcript.exons.push([start, end]);

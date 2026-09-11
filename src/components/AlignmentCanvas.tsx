@@ -357,11 +357,12 @@ function drawToggleLabel(
     rowH: number,
     id: string,
     hitRects: HitRect[],
+    bold = false,
 ) {
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, y - 1, marginL - 2, rowH + 2);
-    ctx.fillStyle = "#6b7280";
-    ctx.font = "11px -apple-system, sans-serif";
+    ctx.fillStyle = bold ? "#1f2933" : "#6b7280";
+    ctx.font = `${bold ? "700" : "400"} 11px -apple-system, sans-serif`;
     const triangle = collapsed ? "▸" : "▾";
     ctx.fillText(`${triangle} ${label}`, 4, y + rowH - 1);
     hitRects.push({ x1: 0, x2: width - MARGIN_R, y1: y - 1, y2: y + rowH + 1, kind: "toggle", id });
@@ -434,7 +435,10 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
     const [hoverToggle, setHoverToggle] = useState(false);
 
     const geneStart0 = gene.start - 1;
-    const transcripts = gene.transcripts || EMPTY_TRANSCRIPTS;
+    const transcripts = useMemo(() => {
+        const list = gene.transcripts || EMPTY_TRANSCRIPTS;
+        return [...list].sort((a, b) => (!!b.isMane === !!a.isMane ? a.id.localeCompare(b.id) : b.isMane ? 1 : -1));
+    }, [gene]);
 
     // Every transcript (plus the unassigned-reads lane) starts collapsed to a coverage density
     // track; expanding one reveals its individual reads. Reset when a different gene is opened.
@@ -746,12 +750,12 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                     }
 
                     if (t.name && t.name !== t.id) {
-                        ctx.fillStyle = "#6b7280";
-                        ctx.font = "11px -apple-system, sans-serif";
+                        ctx.fillStyle = t.isMane ? "#1f2933" : "#6b7280";
+                        ctx.font = `${t.isMane ? "700" : "400"} 11px -apple-system, sans-serif`;
                         ctx.fillText(t.name, scaleX(t.end) + 6, rowY + EXON_ROW_H - 1);
                     }
 
-                    drawToggleLabel(ctx, marginL, width, t.id, lane.collapsed, rowY, EXON_ROW_H, t.id, hitRects);
+                    drawToggleLabel(ctx, marginL, width, t.id, lane.collapsed, rowY, EXON_ROW_H, t.id, hitRects, t.isMane);
                 };
 
                 // density track sits above its transcript's exon row and stays put whether

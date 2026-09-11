@@ -4,6 +4,7 @@ export interface ExonTranscript {
     start: number; // 1-based, from the GTF
     end: number;
     exons: [number, number][]; // 1-based [start,end], inclusive
+    isMane?: boolean; // carries the MANE_Select tag - absent/false for a pre-built JSON that predates this field
 }
 
 export interface ExonGene {
