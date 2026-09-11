@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BaiRefIndex, BamRecord, ExonGene } from "./types";
 import { parseBAMHeader, readBAI, fetchRegionRecords } from "./bamIo";
 import { parseGtfFile } from "./gtfIo";
-import Header from "./components/Header";
+import Header, { type LayoutMode } from "./components/Header";
 import Legend from "./components/Legend";
+import GeneTabs, { type GeneTab } from "./components/GeneTabs";
 import AlignmentPanel from "./components/AlignmentPanel";
 import "./App.css";
 
@@ -23,10 +24,12 @@ interface BamSource {
     queriedGeneId: string | null;
 }
 
-// Panels are 4 fixed slots laid out 2x2. A slot holds a reference to a pool source (or none,
-// rendered as an empty slot) - loading more BAM/BAI pairs than there are empty slots just adds
-// them to the pool, still pickable from any slot's dropdown, including a slot that already
-// shows another pair (duplicates across slots are fine, they just share the same query result).
+// Panels are up to 4 fixed slots, of which only the first `layoutMode` are shown (1 / 2x1 / 2x2).
+// A slot holds a reference to a pool source (or none, rendered as an empty slot) - loading more
+// BAM/BAI pairs than there are visible slots just adds them to the pool, still pickable from any
+// slot's dropdown, including a slot that already shows another pair (sharing the same query
+// result, no duplicate fetch). Slots beyond the current layout keep whatever they were assigned
+// so switching layout back and forth doesn't lose anything.
 const SLOT_COUNT = 4;
 
 interface PanelSlot {
@@ -36,6 +39,12 @@ interface PanelSlot {
 
 function makeEmptySlots(): PanelSlot[] {
     return Array.from({ length: SLOT_COUNT }, () => ({ sourceId: null, locked: true }));
+}
+
+function autoLayoutMode(readyCount: number): LayoutMode {
+    if (readyCount <= 1) return 1;
+    if (readyCount === 2) return 2;
+    return 4;
 }
 
 function makeId() {
@@ -50,10 +59,16 @@ export default function App() {
     const lastGtfFileRef = useRef<File | null>(null);
     const [sources, setSources] = useState<BamSource[]>([]);
     const [slots, setSlots] = useState<PanelSlot[]>(makeEmptySlots());
+    const [layoutMode, setLayoutMode] = useState<LayoutMode>(1);
+    const layoutManualRef = useRef(false);
     const [status, setStatus] = useState("No GTF loaded");
 
-    const [currentGeneId, setCurrentGeneId] = useState<string | null>(null);
-    const [viewingGeneId, setViewingGeneId] = useState<string | null>(null);
+    // Browser-tab-style gene navigation: each tab just carries a gene id, the panel layout and
+    // BAM-to-slot assignments below are shared across every tab. Switching tabs re-queries the
+    // same panels for the new gene's region rather than duplicating/caching per tab.
+    const [tabs, setTabs] = useState<GeneTab[]>([]);
+    const [activeTabId, setActiveTabId] = useState<string | null>(null);
+    const [addressBarOpen, setAddressBarOpen] = useState(false);
     const [sharedView, setSharedView] = useState<{ start: number; end: number } | null>(null);
 
     // Density-track peaks reported by each panel slot (per transcript id), merged across slots
@@ -170,7 +185,12 @@ export default function App() {
             }),
         );
 
-        setSources((prev) => [...prev, ...newSources]);
+        let totalReady = 0;
+        setSources((prev) => {
+            const next = [...prev, ...newSources];
+            totalReady = next.filter((s) => s.ready).length;
+            return next;
+        });
 
         // Fill any empty panel slots with the newly loaded BAMs, in order; anything past the
         // 4 slots just sits in the pool, still selectable from any slot's dropdown.
@@ -187,16 +207,49 @@ export default function App() {
             return next;
         });
 
+        // Suggest a layout that fits what's loaded so far, unless the user has already picked one.
+        if (!layoutManualRef.current) setLayoutMode(autoLayoutMode(totalReady));
+
         const readyCount = readyIds.length;
         setStatus(readyCount > 0
             ? `${readyCount} BAM${readyCount > 1 ? "s" : ""} ready - select a gene to query its region`
             : "Failed to load one or more BAM/BAI files");
     }, []);
 
-    const handleSelectGene = useCallback((geneId: string) => {
-        setCurrentGeneId(geneId);
-        setViewingGeneId(geneId);
+    const handleLayoutModeChange = useCallback((mode: LayoutMode) => {
+        layoutManualRef.current = true;
+        setLayoutMode(mode);
+    }, []);
+
+    const handleOpenAddressBar = useCallback(() => setAddressBarOpen(true), []);
+    const handleCloseAddressBar = useCallback(() => setAddressBarOpen(false), []);
+
+    const handlePickGene = useCallback((geneId: string) => {
+        const tab: GeneTab = { id: makeId(), geneId };
+        setTabs((prev) => [...prev, tab]);
+        setActiveTabId(tab.id);
+        setAddressBarOpen(false);
         setSharedView(null);
+    }, []);
+
+    const handleSelectTab = useCallback((tabId: string) => {
+        setActiveTabId(tabId);
+        setAddressBarOpen(false);
+        setSharedView(null);
+    }, []);
+
+    const handleCloseTab = useCallback((tabId: string) => {
+        setTabs((prev) => {
+            const idx = prev.findIndex((t) => t.id === tabId);
+            if (idx === -1) return prev;
+            const next = prev.filter((t) => t.id !== tabId);
+            setActiveTabId((cur) => {
+                if (cur !== tabId) return cur;
+                const fallbackIndex = idx > 0 ? idx - 1 : 0;
+                return next[fallbackIndex]?.id ?? null;
+            });
+            return next;
+        });
     }, []);
 
     const handleSlotSourceChange = useCallback((slotIndex: number, sourceId: string | null) => {
@@ -241,23 +294,27 @@ export default function App() {
         return merged;
     }, [peaksBySlot]);
 
-    // Single source of truth for querying: runs whenever the selected gene, the slot
+    const currentGeneId = tabs.find((t) => t.id === activeTabId)?.geneId ?? null;
+
+    // Single source of truth for querying: runs whenever the selected gene, the visible slot
     // assignments, or the source pool change, and queries any slot-assigned, ready source
-    // whose records don't already reflect the current gene.
+    // whose records don't already reflect the current gene. Switching tabs just changes
+    // currentGeneId, which this picks up the same way a fresh gene selection would.
     useEffect(() => {
         if (!currentGeneId) return;
-        const assignedIds = new Set(slots.map((s) => s.sourceId).filter((id): id is string => id !== null));
+        const visibleSlots = slots.slice(0, layoutMode);
+        const assignedIds = new Set(visibleSlots.map((s) => s.sourceId).filter((id): id is string => id !== null));
         for (const source of sources) {
             if (!assignedIds.has(source.id) || !source.ready || source.queryLoading) continue;
             if (source.queriedGeneId === currentGeneId) continue;
             runQuery(currentGeneId, source.id, exonIndexById);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentGeneId, slots, sources, exonIndexById]);
+    }, [currentGeneId, slots, layoutMode, sources, exonIndexById]);
 
     const currentGene = currentGeneId ? exonIndexById.get(currentGeneId) ?? null : null;
-    const viewingGene = viewingGeneId ? exonIndexById.get(viewingGeneId) ?? null : null;
-    const assignedCount = slots.filter((s) => s.sourceId !== null).length;
+    const visibleSlotCount = layoutMode;
+    const assignedCount = slots.slice(0, visibleSlotCount).filter((s) => s.sourceId !== null).length;
     const sourceOptions = useMemo(() => sources.map((s) => ({ id: s.id, label: s.label })), [sources]);
 
     function renderSlot(slotIndex: number) {
@@ -266,7 +323,7 @@ export default function App() {
         return (
             <AlignmentPanel
                 key={slotIndex}
-                gene={viewingGene}
+                gene={currentGene}
                 sourceOptions={sourceOptions}
                 selectedSourceId={slot.sourceId}
                 onSelectSource={(id) => handleSlotSourceChange(slotIndex, id)}
@@ -291,39 +348,40 @@ export default function App() {
                 exonFileName={exonFileName}
                 gtfProgress={gtfProgress}
                 bamFileLabel={bamFileLabel}
-                exonIndexReady={exonIndexById.size > 0}
-                exonIndexById={exonIndexById}
                 status={status}
                 tslLevel={tslLevel}
                 onTslLevelChange={handleTslLevelChange}
                 onExonIndexFile={handleExonIndexFile}
                 onBamBaiFiles={handleBamBaiFiles}
-                onSelectGene={handleSelectGene}
+                layoutMode={layoutMode}
+                onLayoutModeChange={handleLayoutModeChange}
             />
             <Legend />
 
-            {currentGene && (
-                <>
-                    <p id="geneTitle">
-                        {currentGene.name && currentGene.name !== currentGene.id ? `${currentGene.name} (${currentGene.id})` : currentGene.id}
-                    </p>
-                    <p id="geneSubtitle">
-                        {currentGene.chrom}:{currentGene.start.toLocaleString()}-{currentGene.end.toLocaleString()}
-                    </p>
-                </>
-            )}
+            <GeneTabs
+                tabs={tabs}
+                activeTabId={activeTabId}
+                addressBarOpen={addressBarOpen}
+                exonIndexById={exonIndexById}
+                exonIndexReady={exonIndexById.size > 0}
+                onSelectTab={handleSelectTab}
+                onCloseTab={handleCloseTab}
+                onOpenAddressBar={handleOpenAddressBar}
+                onCloseAddressBar={handleCloseAddressBar}
+                onPickGene={handlePickGene}
+            />
 
-            {viewingGene && sources.length > 0 ? (
+            {currentGene && sources.length > 0 ? (
                 <div id="panelArea">
-                    <div className="panel-grid-2x2">
-                        {slots.map((_, i) => renderSlot(i))}
+                    <div className={`panel-grid layout-${visibleSlotCount}`}>
+                        {Array.from({ length: visibleSlotCount }, (_, i) => renderSlot(i))}
                     </div>
                 </div>
             ) : (
                 <div id="placeholder">
                     Load a GTF (optionally filtered by transcript support level) to get an instant, searchable gene
-                    list with coordinates. Then load one or more BAM files together with their .bai. Selecting a
-                    gene queries just that region through each index - no need to scan the whole file - and shows
+                    list with coordinates. Then load one or more BAM files together with their .bai. Open a gene in
+                    a new tab with the + button above - it queries just that region through each index and shows
                     the known transcript models alongside the actual reads, in up to 4 panels at once, each with
                     its own BAM picker.
                 </div>

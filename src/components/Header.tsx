@@ -1,46 +1,38 @@
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
-import type { ExonGene } from "../types";
+import type { ChangeEvent } from "react";
+
+export type LayoutMode = 1 | 2 | 4;
 
 interface HeaderProps {
     exonFileName: string;
     gtfProgress: number | null;
     bamFileLabel: string;
-    exonIndexReady: boolean;
-    exonIndexById: Map<string, ExonGene>;
     status: string;
     tslLevel: string;
     onTslLevelChange: (level: string) => void;
     onExonIndexFile: (file: File) => void;
     onBamBaiFiles: (pairs: { bamFile: File; baiFile: File }[]) => void;
-    onSelectGene: (geneId: string) => void;
+    layoutMode: LayoutMode;
+    onLayoutModeChange: (mode: LayoutMode) => void;
 }
+
+const LAYOUT_OPTIONS: { mode: LayoutMode; label: string; title: string }[] = [
+    { mode: 1, label: "1", title: "Single panel" },
+    { mode: 2, label: "2×1", title: "2 panels side by side" },
+    { mode: 4, label: "2×2", title: "4 panels, 2 rows of 2" },
+];
 
 export default function Header({
     exonFileName,
     gtfProgress,
     bamFileLabel,
-    exonIndexReady,
-    exonIndexById,
     status,
     tslLevel,
     onTslLevelChange,
     onExonIndexFile,
     onBamBaiFiles,
-    onSelectGene,
+    layoutMode,
+    onLayoutModeChange,
 }: HeaderProps) {
-    const [query, setQuery] = useState("");
-    const [showSuggestions, setShowSuggestions] = useState(false);
-    const wrapRef = useRef<HTMLDivElement>(null);
-
-    const matches = useMemo(() => {
-        const q = query.trim().toLowerCase();
-        if (q.length < 1) return [];
-        return [...exonIndexById.values()]
-            .filter((g) => g.id.toLowerCase().startsWith(q) || (g.name && g.name.toLowerCase().startsWith(q)))
-            .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id))
-            .slice(0, 20);
-    }, [query, exonIndexById]);
-
     function handleExonInput(e: ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0];
         if (file) onExonIndexFile(file);
@@ -63,12 +55,6 @@ export default function Header({
             onBamBaiFiles(pairs);
         }
         e.target.value = "";
-    }
-
-    function pickGene(g: ExonGene) {
-        setQuery(g.name || g.id);
-        setShowSuggestions(false);
-        onSelectGene(g.id);
     }
 
     return (
@@ -111,41 +97,18 @@ export default function Header({
                 <input type="file" id="bamBaiInput" accept=".bam,.bai" multiple onChange={handleBamBaiInput} />
             </label>
 
-            <div id="geneSearchWrap" ref={wrapRef}>
-                <input
-                    id="geneSearch"
-                    type="text"
-                    placeholder={exonIndexReady ? "Gene ID or name" : "Load a GTF first…"}
-                    disabled={!exonIndexReady}
-                    autoComplete="off"
-                    value={query}
-                    onChange={(e) => {
-                        setQuery(e.target.value);
-                        setShowSuggestions(true);
-                    }}
-                    onBlur={() => {
-                        // Delay so a click on a suggestion row still registers first
-                        window.setTimeout(() => setShowSuggestions(false), 150);
-                    }}
-                />
-                {showSuggestions && matches.length > 0 && (
-                    <div id="suggestions">
-                        {matches.map((g) => (
-                            <div className="row" key={g.id} onMouseDown={(e) => e.preventDefault()} onClick={() => pickGene(g)}>
-                                <span>
-                                    {g.name && g.name !== g.id ? (
-                                        <>
-                                            {g.name} <span className="sugg-meta">{g.id}</span>
-                                        </>
-                                    ) : (
-                                        g.id
-                                    )}{" "}
-                                    <span className="sugg-meta">{g.chrom}:{g.start}-{g.end}</span>
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-                )}
+            <div className="layout-toggle" role="group" aria-label="Panel layout">
+                {LAYOUT_OPTIONS.map((opt) => (
+                    <button
+                        key={opt.mode}
+                        type="button"
+                        className={"layout-btn" + (layoutMode === opt.mode ? " active" : "")}
+                        title={opt.title}
+                        onClick={() => onLayoutModeChange(opt.mode)}
+                    >
+                        {opt.label}
+                    </button>
+                ))}
             </div>
 
             <div id="status">{status}</div>
