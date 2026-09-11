@@ -973,13 +973,23 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         }
     }
 
+    const curViewWidth = effectiveView.end - effectiveView.start;
+    const matchedZoomLevel = ZOOM_LEVELS.find((lvl) =>
+        lvl.bp === null ? curViewWidth === hardEnd0 - hardStart0 : Math.abs(curViewWidth - lvl.bp) < 1,
+    );
+
     return (
         <div id="plot-container" ref={containerRef}>
             <div className="plot-toolbar">
-                <select className="zoom-select" onChange={(e) => setViewWidth(e.target.value === "" ? hardEnd0 - hardStart0 : Number(e.target.value))}>
+                <select
+                    className="zoom-select"
+                    value={matchedZoomLevel ? (matchedZoomLevel.bp ?? "") : "custom"}
+                    onChange={(e) => setViewWidth(e.target.value === "" ? hardEnd0 - hardStart0 : Number(e.target.value))}
+                >
                     {ZOOM_LEVELS.map((lvl) => (
                         <option key={lvl.label} value={lvl.bp ?? ""}>{lvl.label}</option>
                     ))}
+                    {!matchedZoomLevel && <option value="custom">Custom</option>}
                 </select>
                 <button type="button" className="pan-btn" title="Pan left by 75% of the visible range" onClick={() => panByFraction(-0.75)}>◀</button>
                 <button type="button" className="pan-btn" title="Pan right by 75% of the visible range" onClick={() => panByFraction(0.75)}>▶</button>
