@@ -428,7 +428,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
     const hitRectsRef = useRef<HitRect[]>([]);
-    const draggingRef = useRef<{ startX: number; view: { start: number; end: number } } | null>(null);
+    const draggingRef = useRef<{ startX: number; startY: number; view: { start: number; end: number } } | null>(null);
 
     const [width, setWidth] = useState(600);
     const [tooltip, setTooltip] = useState<{ hit: HitRect; x: number; y: number } | null>(null);
@@ -908,6 +908,10 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
 
     //
 
+    // Below this many px of movement between mousedown and mouseup, treat the gesture as a
+    // click (show/update the tooltip) rather than a pan.
+    const CLICK_MOVE_THRESHOLD = 4;
+
     function handleMouseDown(evt: React.MouseEvent<HTMLCanvasElement>) {
         const rect = evt.currentTarget.getBoundingClientRect();
         const mx = evt.clientX - rect.left;
@@ -919,8 +923,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
             toggleCollapsed(toggleHit.id);
             return;
         }
-        draggingRef.current = { startX: evt.clientX, view: { ...effectiveView } };
-        setTooltip(null);
+        draggingRef.current = { startX: evt.clientX, startY: evt.clientY, view: { ...effectiveView } };
     }
 
     useEffect(() => {
@@ -928,14 +931,30 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
             const dragging = draggingRef.current;
             if (!dragging) return;
             const dx = evt.clientX - dragging.startX;
+            const dy = evt.clientY - dragging.startY;
+            // Once this turns into an actual pan, drop any tooltip left over from a prior click.
+            if (Math.hypot(dx, dy) > CLICK_MOVE_THRESHOLD) setTooltip(null);
             const curWidth = dragging.view.end - dragging.view.start;
             const bpPerPx = curWidth / (width - marginL - MARGIN_R);
             const shift = -dx * bpPerPx;
             const [s, e] = clampView(dragging.view.start + shift, dragging.view.end + shift);
             updateViewRef.current({ start: s, end: e });
         }
-        function onUp() {
+        function onUp(evt: MouseEvent) {
+            const dragging = draggingRef.current;
             draggingRef.current = null;
+            if (!dragging) return;
+            const dx = evt.clientX - dragging.startX;
+            const dy = evt.clientY - dragging.startY;
+            if (Math.hypot(dx, dy) >= CLICK_MOVE_THRESHOLD) return; // was a pan, not a click
+
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            const mx = evt.clientX - rect.left;
+            const my = evt.clientY - rect.top;
+            const hit = hitRectsRef.current.find((h) => mx >= h.x1 && mx <= h.x2 && my >= h.y1 && my <= h.y2);
+            setTooltip(hit && hit.kind !== "toggle" ? { hit, x: evt.clientX, y: evt.clientY } : null);
         }
         window.addEventListener("mousemove", onMove);
         window.addEventListener("mouseup", onUp);
@@ -950,6 +969,9 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         updateView({ start: hardStart0, end: hardEnd0 });
     }
 
+    // Tooltip content is click-driven (see onUp above) - this only tracks the hover cursor
+    // (pointer over a toggle) so mousemove doesn't make the tooltip flicker as it crosses
+    // between adjacent hit rects.
     function handleMouseMove(evt: React.MouseEvent<HTMLCanvasElement>) {
         if (draggingRef.current) return;
         const rect = evt.currentTarget.getBoundingClientRect();
@@ -957,11 +979,6 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         const my = evt.clientY - rect.top;
         const hit = hitRectsRef.current.find((h) => mx >= h.x1 && mx <= h.x2 && my >= h.y1 && my <= h.y2);
         setHoverToggle(hit?.kind === "toggle");
-        if (hit && hit.kind !== "toggle") {
-            setTooltip({ hit, x: evt.clientX, y: evt.clientY });
-        } else {
-            setTooltip(null);
-        }
     }
 
     // Left/Right arrows pan; Ctrl/Cmd+Left/Right zoom out/in. Up/Down are swallowed here too -
