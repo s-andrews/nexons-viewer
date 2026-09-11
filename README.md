@@ -1,6 +1,6 @@
-# nexon-viewer is served on netlify
+# nexons-viewer is served on netlify
 
-https://nexon-viewer.netlify.app/
+https://nexons-viewer.netlify.app/
 
 
 It requires a json file converted from the GTF used by nexons to generate the bam files.
