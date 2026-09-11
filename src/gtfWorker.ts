@@ -78,17 +78,9 @@ function processExonLine(line: string, state: ParseState) {
     if (!gid) gid = gname;
     if (!gname) gname = gid;
 
-    let tid = extractAttr(attrs, "transcript_id");
-    let tname = extractAttr(attrs, "transcript_name");
-    if (!tid && !tname) return;
-    if (!tid) tid = tname;
-    if (!tname) tname = tid;
-
-    if (state.maxTsl !== null && !hasGoodTag(attrs)) {
-        const tsl = extractTsl(attrs);
-        if (tsl === null || tsl > state.maxTsl) return;
-    }
-
+    // Gene span always reflects every exon of every transcript, regardless of the TSL filter -
+    // the "gene region" context bar shouldn't shrink to whichever transcript happens to survive
+    // filtering. So this has to happen before the TSL check below, not after it.
     let gene = state.genesById.get(gid!);
     if (!gene) {
         const chrom = line.slice(0, t1);
@@ -97,6 +89,17 @@ function processExonLine(line: string, state: ParseState) {
     } else {
         if (start < gene.start) gene.start = start;
         if (end > gene.end) gene.end = end;
+    }
+
+    let tid = extractAttr(attrs, "transcript_id");
+    let tname = extractAttr(attrs, "transcript_name");
+    if (!tid && !tname) return;
+    if (!tid) tid = tname;
+    if (!tname) tname = tid;
+
+    if (state.maxTsl !== null && !hasGoodTag(attrs)) {
+        const tsl = extractTsl(attrs);
+        if (tsl === null || tsl > state.maxTsl) return; // filtered out - gene bounds above already account for it
     }
 
     let transcript = state.transcriptsById.get(tid!);
@@ -155,6 +158,7 @@ async function parseGtf(
     let totalGenes = 0;
     let chunk: ExonGene[] = [];
     for (const gene of state.genesById.values()) {
+        if (gene.transcripts.length === 0) continue; // every transcript got filtered out - nothing to show
         for (const transcript of gene.transcripts) transcript.exons.sort((a, b) => a[0] - b[0]);
         chunk.push(gene);
         if (chunk.length >= CHUNK_SIZE) {
