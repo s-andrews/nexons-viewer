@@ -957,10 +957,16 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         }
     }
 
-    // Left/Right arrows pan; Ctrl/Cmd+Left/Right zoom out/in.
+    // Left/Right arrows pan; Ctrl/Cmd+Left/Right zoom out/in. Up/Down are swallowed here too -
+    // left unhandled, the browser's default action for an unhandled arrow key on a focused
+    // element can shift focus onward to the next focusable element (e.g. the next panel's BAM
+    // picker <select>, which then treats Up/Down as "change selected option"), so every arrow
+    // key needs an explicit preventDefault while this canvas has focus, not just the ones we act on.
     function handleCanvasKeyDown(evt: React.KeyboardEvent<HTMLCanvasElement>) {
-        if (evt.key !== "ArrowRight" && evt.key !== "ArrowLeft") return;
+        if (evt.key !== "ArrowRight" && evt.key !== "ArrowLeft" && evt.key !== "ArrowUp" && evt.key !== "ArrowDown") return;
         evt.preventDefault();
+
+        if (evt.key === "ArrowUp" || evt.key === "ArrowDown") return;
 
         const zoom = evt.ctrlKey || evt.metaKey;
         const forward = evt.key === "ArrowRight";
