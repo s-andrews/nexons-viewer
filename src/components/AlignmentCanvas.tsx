@@ -221,7 +221,7 @@ function drawDensityTrack(ctx: CanvasRenderingContext2D, marginL: number, pxFrom
     ctx.fillRect(0, trackY - 1, marginL - 2, 12);
     ctx.fillStyle = "#374151";
     ctx.font = "600 10px -apple-system, sans-serif";
-    ctx.fillText(`peak ${Math.round(peak).toLocaleString()}×`, 4, trackY + 9);
+    ctx.fillText(`${Math.round(peak).toLocaleString()}×`, 4, trackY + 9);
 }
 
 // Confidence (nR) is shown as fill style rather than hue, since hue is reserved for gene
