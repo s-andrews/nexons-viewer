@@ -282,7 +282,7 @@ function drawConfidenceBlock(ctx: CanvasRenderingContext2D, x: number, y: number
     }
 }
 
-function drawReadRow(ctx: CanvasRenderingContext2D, r: PackedRead, rowY: number, scaleX: ScaleX, showCigarDetail: boolean, hitRects: HitRect[]) {
+function drawReadRow(ctx: CanvasRenderingContext2D, r: PackedRead, rowY: number, scaleX: ScaleX, showCigarDetail: boolean, selected: boolean, hitRects: HitRect[]) {
     const midY = rowY + ROW_H / 2;
     const rgb = colorForRead(r);
     const nR = typeof r.tags.nR === "string" ? r.tags.nR : undefined;
@@ -299,6 +299,17 @@ function drawReadRow(ctx: CanvasRenderingContext2D, r: PackedRead, rowY: number,
         const x2 = scaleX(bEnd);
         const w = Math.max(1, x2 - x1);
         drawConfidenceBlock(ctx, x1, rowY, w, ROW_H, rgb, nR, r.isSecondary);
+    }
+
+    if (selected) {
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        for (const [bStart, bEnd] of r.blocks) {
+            const x1 = scaleX(bStart);
+            const x2 = scaleX(bEnd);
+            ctx.strokeRect(x1 + 0.5, rowY + 0.5, Math.max(1, x2 - x1) - 1, ROW_H - 1);
+        }
     }
 
     if (showCigarDetail) drawCigarDetail(ctx, r, scaleX, rowY);
@@ -432,6 +443,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
 
     const [width, setWidth] = useState(600);
     const [tooltip, setTooltip] = useState<{ hit: HitRect; x: number; y: number } | null>(null);
+    const [selectedRead, setSelectedRead] = useState<BamRecord | null>(null);
     const [hoverToggle, setHoverToggle] = useState(false);
 
     const geneStart0 = gene.start - 1;
@@ -449,6 +461,8 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
 
     useEffect(() => {
         setCollapsedIds(new Set([...transcripts.map((t) => t.id), UNASSIGNED_ID]));
+        setSelectedRead(null);
+        setTooltip(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [gene.id]);
 
@@ -685,6 +699,16 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, width, height);
 
+        if (selectedRead) {
+            ctx.fillStyle = "rgba(239,68,68,0.12)";
+            for (const [bStart, bEnd] of selectedRead.blocks) {
+                const x1 = Math.max(pxFrom, scaleX(bStart));
+                const x2 = Math.min(pxTo, scaleX(bEnd));
+                if (x2 <= x1) continue;
+                ctx.fillRect(x1, 30, Math.max(1, x2 - x1), Math.max(0, height - 30));
+            }
+        }
+
         // Ruler
         ctx.strokeStyle = "#d7dbe0";
         ctx.fillStyle = "#6b7280";
@@ -773,7 +797,9 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                     y += LANE_BOTTOM_GAP;
                 } else {
                     y += LANE_INNER_GAP;
-                    for (const r of lane.layout!.reads) drawReadRow(ctx, r, y + r.row * (ROW_H + ROW_GAP), scaleX, showCigarDetail, hitRects);
+                    for (const r of lane.layout!.reads) {
+                        drawReadRow(ctx, r, y + r.row * (ROW_H + ROW_GAP), scaleX, showCigarDetail, r === selectedRead, hitRects);
+                    }
                     y += lane.layout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
                 }
             } else {
@@ -811,14 +837,18 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                     ctx.font = "600 11px -apple-system, sans-serif";
                     ctx.fillText("Gene-level match, no specific transcript (nR: gene)", 4, y + 11);
                     y += 14 + LANE_INNER_GAP;
-                    for (const r of lane.geneLevelLayout!.reads) drawReadRow(ctx, r, y + r.row * (ROW_H + ROW_GAP), scaleX, showCigarDetail, hitRects);
+                    for (const r of lane.geneLevelLayout!.reads) {
+                        drawReadRow(ctx, r, y + r.row * (ROW_H + ROW_GAP), scaleX, showCigarDetail, r === selectedRead, hitRects);
+                    }
                     y += lane.geneLevelLayout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
 
                     ctx.fillStyle = "#4b5563";
                     ctx.font = "600 11px -apple-system, sans-serif";
                     ctx.fillText("No match to this gene (nR: blank/multi) — may align to an overlapping gene", 4, y + 11);
                     y += 14 + LANE_INNER_GAP;
-                    for (const r of lane.noMatchLayout!.reads) drawReadRow(ctx, r, y + r.row * (ROW_H + ROW_GAP), scaleX, showCigarDetail, hitRects);
+                    for (const r of lane.noMatchLayout!.reads) {
+                        drawReadRow(ctx, r, y + r.row * (ROW_H + ROW_GAP), scaleX, showCigarDetail, r === selectedRead, hitRects);
+                    }
                     y += lane.noMatchLayout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
                 }
             }
@@ -859,7 +889,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         }
 
         hitRectsRef.current = hitRects;
-    }, [effectiveView, records, gene, transcripts, overlappingGenes, marginL, width, geneStart0, collapsedIds, mergedExons, displayPeaks]);
+    }, [effectiveView, records, gene, transcripts, overlappingGenes, marginL, width, geneStart0, collapsedIds, mergedExons, displayPeaks, selectedRead]);
 
     // ---- tooltip positioning: flip to stay inside the viewport ----
     useLayoutEffect(() => {
@@ -876,11 +906,20 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
 
     function handleWheel(evt: WheelEvent) {
         // Trackpad two-finger scroll fires plain wheel events indistinguishable from a mouse
-        // wheel except by gesture; only pinch-to-zoom (ctrlKey) or an explicit modifier zooms.
-        // A plain scroll passes through so the panel's own vertical scrollbar handles it -
-        // otherwise scrolling through a tall track (many transcripts/variants) fights with zoom.
-        if (!evt.ctrlKey && !evt.metaKey) return;
+        // wheel except by gesture. A plain scroll passes through so the panel's own vertical
+        // scrollbar handles it - otherwise scrolling through a tall track fights with navigation.
+        if (!evt.ctrlKey && !evt.metaKey && !evt.shiftKey) return;
         evt.preventDefault();
+        if (evt.shiftKey && !evt.ctrlKey && !evt.metaKey) {
+            const curWidth = effectiveView.end - effectiveView.start;
+            const bpPerPx = curWidth / (width - marginL - MARGIN_R);
+            const deltaPx = evt.deltaX !== 0 ? evt.deltaX : evt.deltaY;
+            const shift = deltaPx * bpPerPx;
+            const [s, e] = clampView(effectiveView.start + shift, effectiveView.end + shift);
+            updateView({ start: s, end: e });
+            return;
+        }
+
         const rect = (evt.currentTarget as HTMLCanvasElement).getBoundingClientRect();
         const mx = evt.clientX - rect.left;
         const curWidth = effectiveView.end - effectiveView.start;
@@ -923,6 +962,8 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
             (h): h is Extract<HitRect, { kind: "toggle" }> => h.kind === "toggle" && mx >= h.x1 && mx <= h.x2 && my >= h.y1 && my <= h.y2,
         );
         if (toggleHit) {
+            setTooltip(null);
+            setSelectedRead(null);
             toggleCollapsed(toggleHit.id);
             return;
         }
@@ -934,9 +975,6 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
             const dragging = draggingRef.current;
             if (!dragging) return;
             const dx = evt.clientX - dragging.startX;
-            const dy = evt.clientY - dragging.startY;
-            // Once this turns into an actual pan, drop any tooltip left over from a prior click.
-            if (Math.hypot(dx, dy) > CLICK_MOVE_THRESHOLD) setTooltip(null);
             const curWidth = dragging.view.end - dragging.view.start;
             const bpPerPx = curWidth / (width - marginL - MARGIN_R);
             const shift = -dx * bpPerPx;
@@ -957,6 +995,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
             const mx = evt.clientX - rect.left;
             const my = evt.clientY - rect.top;
             const hit = hitRectsRef.current.find((h) => mx >= h.x1 && mx <= h.x2 && my >= h.y1 && my <= h.y2);
+            setSelectedRead(hit?.kind === "read" ? hit.read : null);
             setTooltip(hit && hit.kind !== "toggle" ? { hit, x: evt.clientX, y: evt.clientY } : null);
         }
         window.addEventListener("mousemove", onMove);
@@ -1026,7 +1065,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                 </select>
                 <button type="button" className="pan-btn" title="Pan left by 75% of the visible range" onClick={() => panByFraction(-0.75)}>◀</button>
                 <button type="button" className="pan-btn" title="Pan right by 75% of the visible range" onClick={() => panByFraction(0.75)}>▶</button>
-                <span className="plot-hint">ctrl/⌘+scroll or ←/→ to zoom · drag or click+←/→ to pan · double-click to reset</span>
+                <span className="plot-hint">ctrl/⌘+scroll to zoom · shift+scroll, drag, or ←/→ to pan · double-click to reset</span>
             </div>
 
             <canvas
@@ -1035,7 +1074,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                 // onWheel={handleWheel}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
-                onMouseLeave={() => { setTooltip(null); setHoverToggle(false); }}
+                onMouseLeave={() => setHoverToggle(false)}
                 onDoubleClick={handleDoubleClick}
                 style={{ cursor: draggingRef.current ? "grabbing" : hoverToggle ? "pointer" : "default" }}
                 onKeyDown={handleCanvasKeyDown}
@@ -1045,6 +1084,14 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
 
             {tooltip && (
                 <div id="tooltip" ref={tooltipRef} style={{ display: "block" }}>
+                    <button
+                        type="button"
+                        className="tooltip-close"
+                        aria-label="Close tooltip"
+                        onClick={() => setTooltip(null)}
+                    >
+                        ×
+                    </button>
                     {tooltip.hit.kind === "generegion" && (
                         <>
                             <div><b>{gene.name && gene.name !== gene.id ? gene.name : gene.id}</b> - gene region</div>
