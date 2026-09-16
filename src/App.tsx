@@ -71,11 +71,6 @@ export default function App() {
     const [addressBarOpen, setAddressBarOpen] = useState(false);
     const [sharedView, setSharedView] = useState<{ start: number; end: number } | null>(null);
 
-    // Density-track peaks reported by each panel slot (per transcript id), merged across slots
-    // so the same transcript scales identically no matter which panel it's viewed in.
-    const [peaksBySlot, setPeaksBySlot] = useState<Map<number, Map<string, number>>>(new Map());
-    const peaksCallbacksRef = useRef<Map<number, (peaks: Map<string, number>) => void>>(new Map());
-
     const queryTokensRef = useRef<Map<string, number>>(new Map());
 
     const bamFileLabel = sources.length === 0 ? "choose files…" : `${sources.length} set${sources.length === 1 ? "" : "s"}`;
@@ -267,33 +262,6 @@ export default function App() {
         });
     }, []);
 
-    const handlePeaksChange = useCallback((slotIndex: number, peaks: Map<string, number>) => {
-        setPeaksBySlot((prev) => {
-            const next = new Map(prev);
-            next.set(slotIndex, peaks);
-            return next;
-        });
-    }, []);
-
-    // Stable per-slot callback identity (AlignmentCanvas only re-reports peaks when its own
-    // values change, so this doesn't need to change every render to avoid a report/re-render loop).
-    function getPeaksCallback(slotIndex: number) {
-        let fn = peaksCallbacksRef.current.get(slotIndex);
-        if (!fn) {
-            fn = (peaks: Map<string, number>) => handlePeaksChange(slotIndex, peaks);
-            peaksCallbacksRef.current.set(slotIndex, fn);
-        }
-        return fn;
-    }
-
-    const sharedPeaks = useMemo(() => {
-        const merged = new Map<string, number>();
-        for (const peaks of peaksBySlot.values()) {
-            for (const [id, v] of peaks) merged.set(id, Math.max(merged.get(id) ?? 0, v));
-        }
-        return merged;
-    }, [peaksBySlot]);
-
     const currentGeneId = tabs.find((t) => t.id === activeTabId)?.geneId ?? null;
 
     // Single source of truth for querying: runs whenever the selected gene, the visible slot
@@ -341,8 +309,6 @@ export default function App() {
                 locked={slot.locked}
                 sharedView={sharedView}
                 onViewChange={(v) => handlePanelViewChange(slotIndex, v)}
-                sharedPeaks={sharedPeaks}
-                onPeaksChange={getPeaksCallback(slotIndex)}
                 onToggleLock={() => toggleSlotLock(slotIndex)}
                 showLock={assignedCount > 1}
             />

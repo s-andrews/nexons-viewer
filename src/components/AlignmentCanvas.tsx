@@ -2,8 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BamRecord, CigarOp, ExonGene, ExonTranscript } from "../types";
 
 // A stable reference (not a fresh `[]` literal per render) - ownPeaks below is memoized on
-// this array's identity, and an unstable fallback would recompute it every render, which
-// would re-fire the peaks-reporting effect every render too.
+// this array's identity, and an unstable fallback would recompute it every render.
 const EMPTY_TRANSCRIPTS: ExonTranscript[] = [];
 
 // Read hue is semantic: green means the read is assigned to the currently displayed gene,
@@ -135,8 +134,8 @@ function packGeneItems(items: { start: number; end: number; gene: ExonGene }[], 
 // Per-pixel-column read depth from each read's reference-consuming blocks (already split at
 // N, so splice gaps don't count as covered). Secondary alignments are excluded so depth
 // reflects actual coverage rather than being inflated by multi-mapping placements. This is
-// only the shape drawn in the current viewport - the peak used to scale/label it is computed
-// separately (see computeMaxDepth) so it stays stable across pan/zoom and across panels.
+// only the shape drawn in the current viewport - the peak used to scale it is computed
+// separately (see computeMaxDepth) so it stays stable across pan/zoom.
 function computeCoverage(reads: BamRecord[], scaleX: ScaleX, pxFrom: number, pxTo: number): Float64Array {
     const n = Math.max(1, Math.ceil(pxTo - pxFrom));
     const delta = new Float64Array(n + 1);
@@ -183,9 +182,8 @@ function computeMaxDepth(reads: BamRecord[]): number {
 }
 
 // Fixed track height regardless of the lane's absolute depth (a peak of 3 and a peak of 3000
-// both fill the band) - the peak value is printed at the left edge of the band, right where the
-// bars themselves start, so the scale is legible.
-function drawDensityTrack(ctx: CanvasRenderingContext2D, pxFrom: number, depth: Float64Array, peak: number, trackY: number, trackH: number) {
+// both fill the band). The label at the left is the assigned-read count for this sample.
+function drawDensityTrack(ctx: CanvasRenderingContext2D, pxFrom: number, depth: Float64Array, peak: number, readCount: number, trackY: number, trackH: number) {
     ctx.fillStyle = "rgba(37,99,235,0.55)";
     for (let i = 0; i < depth.length; i++) {
         if (depth[i] <= 0) continue;
@@ -196,7 +194,7 @@ function drawDensityTrack(ctx: CanvasRenderingContext2D, pxFrom: number, depth: 
     ctx.lineWidth = 1;
     ctx.strokeRect(pxFrom + 0.5, trackY + 0.5, Math.max(1, depth.length - 1), trackH - 1);
 
-    const label = Math.round(peak).toLocaleString();
+    const label = readCount.toLocaleString();
     ctx.font = "600 10px -apple-system, sans-serif";
     const labelWidth = ctx.measureText(label).width;
     ctx.fillStyle = "#ffffff";
@@ -395,10 +393,6 @@ interface AlignmentCanvasProps {
     locked: boolean;
     sharedView: { start: number; end: number } | null;
     onViewChange: (view: { start: number; end: number }) => void;
-    // Density-track peak per lane id (transcript id, or UNASSIGNED_ID), merged across every
-    // open panel - lets two BAM files be compared on the same vertical scale per transcript.
-    sharedPeaks: Map<string, number> | null;
-    onPeaksChange: (peaks: Map<string, number>) => void;
 }
 
 const ZOOM_LEVELS: { label: string; bp: number | null }[] = [
@@ -412,7 +406,7 @@ const ZOOM_LEVELS: { label: string; bp: number | null }[] = [
     { label: "100 bp", bp: 100 },
 ];
 
-export default function AlignmentCanvas({ gene, records, exonIndexById, locked, sharedView, onViewChange, sharedPeaks, onPeaksChange }: AlignmentCanvasProps) {
+export default function AlignmentCanvas({ gene, records, exonIndexById, locked, sharedView, onViewChange }: AlignmentCanvasProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
@@ -463,21 +457,6 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         map.set(UNASSIGNED_ID, computeMaxDepth(unassigned));
         return map;
     }, [records, transcripts]);
-
-    const onPeaksChangeRef = useRef(onPeaksChange);
-    onPeaksChangeRef.current = onPeaksChange;
-
-    useEffect(() => {
-        onPeaksChangeRef.current(ownPeaks);
-    }, [ownPeaks]);
-
-    // Scale every panel's density track against the larger of its own peak and whatever's been
-    // reported by other open panels for the same transcript, so coverage is comparable across BAMs.
-    const displayPeaks = useMemo(() => {
-        const map = new Map(ownPeaks);
-        if (sharedPeaks) for (const [id, v] of sharedPeaks) map.set(id, Math.max(map.get(id) ?? 0, v));
-        return map;
-    }, [ownPeaks, sharedPeaks]);
 
     const mergedExons = useMemo(() => {
         const all = transcripts.flatMap((t) => t.exons).sort((a, b) => a[0] - b[0]);
@@ -602,6 +581,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
             t: ExonTranscript;
             collapsed: boolean;
             hasAssignedReads: boolean;
+            readCount: number;
             layout: ReturnType<typeof layoutLane> | null;
             density: Float64Array | null;
         };
@@ -611,6 +591,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
             geneLevelLayout: ReturnType<typeof layoutLane> | null;
             noMatchLayout: ReturnType<typeof layoutLane> | null;
             density: Float64Array | null;
+            readCount: number;
         };
         type Lane = TranscriptLane | UnassignedLane;
 
@@ -619,30 +600,33 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
 
         // No point drawing an empty bordered box when not one of the open BAM panels has any
         // reads for this transcript - just show the exon model on its own.
-        const hasDensity = (id: string) => (displayPeaks.get(id) ?? 0) > 0;
+        const hasDensity = (id: string) => (ownPeaks.get(id) ?? 0) > 0;
 
         // Collapsed lanes show only the transcript/merged exon structure. Expanded lanes add the
         // quantitative density track (when there's anything to show) and the individual reads.
         const lanes: Lane[] = transcripts.map((t) => {
             const collapsed = collapsedIds.has(t.id);
             const reads = visible.filter((r) => r.tags.nT === t.id);
+            const readCount = records.filter((r) => r.tags.nT === t.id).length;
             return {
                 kind: "transcript", t, collapsed,
-                hasAssignedReads: records.some((r) => r.tags.nT === t.id),
+                hasAssignedReads: readCount > 0,
+                readCount,
                 layout: collapsed ? null : layoutLane(reads),
                 density: computeCoverage(reads, scaleX, pxFrom, pxTo),
             };
         });
 
         const unassigned = visible.filter((r) => !r.tags.nT || !assignedTranscriptIds.has(r.tags.nT as string));
+        const unassignedReadCount = records.filter((r) => !r.tags.nT || !assignedTranscriptIds.has(r.tags.nT as string)).length;
         const geneLevelReads = unassigned.filter((r) => r.tags.nR === "gene");
         const noMatchReads = unassigned.filter((r) => r.tags.nR !== "gene");
         const unassignedCollapsed = collapsedIds.has(UNASSIGNED_ID);
         const unassignedDensity = computeCoverage([...geneLevelReads, ...noMatchReads], scaleX, pxFrom, pxTo);
         lanes.push(
             unassignedCollapsed
-                ? { kind: "unassigned", collapsed: true, geneLevelLayout: null, noMatchLayout: null, density: unassignedDensity }
-                : { kind: "unassigned", collapsed: false, geneLevelLayout: layoutLane(geneLevelReads), noMatchLayout: layoutLane(noMatchReads), density: unassignedDensity },
+                ? { kind: "unassigned", collapsed: true, geneLevelLayout: null, noMatchLayout: null, density: unassignedDensity, readCount: unassignedReadCount }
+                : { kind: "unassigned", collapsed: false, geneLevelLayout: layoutLane(geneLevelReads), noMatchLayout: layoutLane(noMatchReads), density: unassignedDensity, readCount: unassignedReadCount },
         );
 
         const geneItems = overlappingGenes
@@ -759,14 +743,15 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                     if (t.name && t.name !== t.id) {
                         ctx.fillStyle = t.isMane ? "#1f2933" : "#6b7280";
                         ctx.font = `${t.isMane ? "700" : "400"} 11px -apple-system, sans-serif`;
-                        ctx.fillText(t.name, scaleX(t.end) + 6, rowY + EXON_ROW_H - 1);
+                        const readCountSuffix = lane.readCount > 0 ? ` [${lane.readCount.toLocaleString()}]` : "";
+                        ctx.fillText(`${t.name}${readCountSuffix}`, scaleX(t.end) + 6, rowY + EXON_ROW_H - 1);
                     }
 
                     drawToggleLabel(ctx, marginL, width, t.id, lane.collapsed, rowY, EXON_ROW_H, t.id, hitRects, t.isMane);
                 };
 
                 if (!lane.collapsed && hasDensity(t.id)) {
-                    drawDensityTrack(ctx, pxFrom, lane.density!, displayPeaks.get(t.id) ?? 0, y, DENSITY_TRACK_H);
+                    drawDensityTrack(ctx, pxFrom, lane.density!, ownPeaks.get(t.id) ?? 0, lane.readCount, y, DENSITY_TRACK_H);
                     y += DENSITY_TRACK_H + DENSITY_GAP;
                 }
                 drawExonRow(y);
@@ -801,7 +786,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                 };
 
                 if (!lane.collapsed && hasDensity(UNASSIGNED_ID)) {
-                    drawDensityTrack(ctx, pxFrom, lane.density!, displayPeaks.get(UNASSIGNED_ID) ?? 0, y, DENSITY_TRACK_H);
+                    drawDensityTrack(ctx, pxFrom, lane.density!, ownPeaks.get(UNASSIGNED_ID) ?? 0, lane.readCount, y, DENSITY_TRACK_H);
                     y += DENSITY_TRACK_H + DENSITY_GAP;
                 }
                 drawMergedExonRow(y);
@@ -867,7 +852,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         }
 
         hitRectsRef.current = hitRects;
-    }, [effectiveView, records, gene, transcripts, overlappingGenes, marginL, width, geneStart0, collapsedIds, mergedExons, displayPeaks, selectedRead]);
+    }, [effectiveView, records, gene, transcripts, overlappingGenes, marginL, width, geneStart0, collapsedIds, mergedExons, ownPeaks, selectedRead]);
 
     // ---- tooltip positioning: flip to stay inside the viewport ----
     useLayoutEffect(() => {
