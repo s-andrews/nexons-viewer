@@ -345,14 +345,15 @@ function drawToggleLabel(
     id: string,
     hitRects: HitRect[],
     bold = false,
+    canToggle = true,
 ) {
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, y - 1, marginL - 2, rowH + 2);
     ctx.fillStyle = bold ? "#1f2933" : "#6b7280";
     ctx.font = `${bold ? "700" : "400"} 11px -apple-system, sans-serif`;
-    const triangle = collapsed ? "▸" : "▾";
-    ctx.fillText(`${triangle} ${label}`, 4, y + rowH - 1);
-    hitRects.push({ x1: 0, x2: width - MARGIN_R, y1: y - 1, y2: y + rowH + 1, kind: "toggle", id });
+    const prefix = canToggle ? `${collapsed ? "▸" : "▾"} ` : "";
+    ctx.fillText(`${prefix}${label}`, 4, y + rowH - 1);
+    if (canToggle) hitRects.push({ x1: 0, x2: width - MARGIN_R, y1: y - 1, y2: y + rowH + 1, kind: "toggle", id });
 }
 
 function drawCigarDetail(ctx: CanvasRenderingContext2D, r: BamRecord, scaleX: ScaleX, rowY: number) {
@@ -615,9 +616,9 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         // Collapsed lanes show only the transcript/merged exon structure. Expanded lanes add the
         // quantitative density track (when there's anything to show) and the individual reads.
         const lanes: Lane[] = transcripts.map((t) => {
-            const collapsed = collapsedIds.has(t.id);
             const reads = visible.filter((r) => r.tags.nT === t.id);
             const readCount = records.filter((r) => r.tags.nT === t.id).length;
+            const collapsed = collapsedIds.has(t.id) || readCount === 0;
             return {
                 kind: "transcript", t, collapsed,
                 hasAssignedReads: readCount > 0,
@@ -631,7 +632,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         const unassignedReadCount = records.filter((r) => !r.tags.nT || !assignedTranscriptIds.has(r.tags.nT as string)).length;
         const geneLevelReads = unassigned.filter((r) => r.tags.nR === "gene");
         const noMatchReads = unassigned.filter((r) => r.tags.nR !== "gene");
-        const unassignedCollapsed = collapsedIds.has(UNASSIGNED_ID);
+        const unassignedCollapsed = collapsedIds.has(UNASSIGNED_ID) || unassignedReadCount === 0;
         const unassignedDensity = computeCoverage([...geneLevelReads, ...noMatchReads], scaleX, pxFrom, pxTo);
         lanes.push(
             unassignedCollapsed
@@ -652,11 +653,9 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
             height += SEP_GAP + 1 + SEP_GAP;
             const id = lane.kind === "transcript" ? lane.t.id : UNASSIGNED_ID;
             height += !lane.collapsed && hasDensity(id) ? DENSITY_TRACK_H + DENSITY_GAP + EXON_ROW_H : EXON_ROW_H;
-            if (lane.collapsed) {
-                height += LANE_BOTTOM_GAP;
-            } else if (lane.kind === "transcript") {
+            if (!lane.collapsed && lane.kind === "transcript") {
                 height += LANE_INNER_GAP + lane.layout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
-            } else {
+            } else if (!lane.collapsed && lane.kind === "unassigned") {
                 height += LANE_INNER_GAP;
                 height += 14 + LANE_INNER_GAP + lane.geneLevelLayout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
                 height += 14 + LANE_INNER_GAP + lane.noMatchLayout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
@@ -757,7 +756,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                         ctx.fillText(`${t.name}${readCountSuffix}`, scaleX(t.end) + 6, rowY + EXON_ROW_H - 1);
                     }
 
-                    drawToggleLabel(ctx, marginL, width, t.id, lane.collapsed, rowY, EXON_ROW_H, t.id, hitRects, t.isMane);
+                    drawToggleLabel(ctx, marginL, width, t.id, lane.collapsed, rowY, EXON_ROW_H, t.id, hitRects, t.isMane, lane.readCount > 0);
                 };
 
                 if (!lane.collapsed && hasDensity(t.id)) {
@@ -766,9 +765,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                 }
                 drawExonRow(y);
                 y += EXON_ROW_H;
-                if (lane.collapsed) {
-                    y += LANE_BOTTOM_GAP;
-                } else {
+                if (!lane.collapsed) {
                     y += LANE_INNER_GAP;
                     for (const r of lane.layout!.reads) {
                         drawReadRow(ctx, r, y + r.row * (ROW_H + ROW_GAP), scaleX, showCigarDetail, r === selectedRead, gene, hitRects);
@@ -792,7 +789,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                         ctx.fillRect(x1, rowY, Math.max(1, x2 - x1), EXON_ROW_H);
                     }
 
-                    drawToggleLabel(ctx, marginL, width, "Unassigned reads", lane.collapsed, rowY, EXON_ROW_H, UNASSIGNED_ID, hitRects);
+                    drawToggleLabel(ctx, marginL, width, "Unassigned reads", lane.collapsed, rowY, EXON_ROW_H, UNASSIGNED_ID, hitRects, false, lane.readCount > 0);
                 };
 
                 if (!lane.collapsed && hasDensity(UNASSIGNED_ID)) {
@@ -801,9 +798,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                 }
                 drawMergedExonRow(y);
                 y += EXON_ROW_H;
-                if (lane.collapsed) {
-                    y += LANE_BOTTOM_GAP;
-                } else {
+                if (!lane.collapsed) {
                     y += LANE_INNER_GAP;
 
                     ctx.fillStyle = "#4b5563";
