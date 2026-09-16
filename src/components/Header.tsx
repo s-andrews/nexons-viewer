@@ -59,7 +59,7 @@ export default function Header({
 
     return (
         <header>
-            <h1>Nexons&nbsp;read&nbsp;viewer</h1>
+            <img className="app-logo" src="/nexons_viewer_logo_path.svg" alt="Nexons read viewer" />
 
             <label className="tsl-label" htmlFor="tslSelect">
                 Max TSL:
