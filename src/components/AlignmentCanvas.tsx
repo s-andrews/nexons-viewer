@@ -605,7 +605,14 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         const visible = records.filter((r) => r.start < effectiveView.end && r.end > effectiveView.start);
         const assignedTranscriptIds = new Set(transcripts.map((t) => t.id));
 
-        type TranscriptLane = { kind: "transcript"; t: ExonTranscript; collapsed: boolean; layout: ReturnType<typeof layoutLane> | null; density: Float64Array | null };
+        type TranscriptLane = {
+            kind: "transcript";
+            t: ExonTranscript;
+            collapsed: boolean;
+            hasAssignedReads: boolean;
+            layout: ReturnType<typeof layoutLane> | null;
+            density: Float64Array | null;
+        };
         type UnassignedLane = {
             kind: "unassigned";
             collapsed: boolean;
@@ -629,6 +636,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
             const reads = visible.filter((r) => r.tags.nT === t.id);
             return {
                 kind: "transcript", t, collapsed,
+                hasAssignedReads: records.some((r) => r.tags.nT === t.id),
                 layout: collapsed ? null : layoutLane(reads, scaleX),
                 density: computeCoverage(reads, scaleX, pxFrom, pxTo),
             };
@@ -739,7 +747,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                     ctx.lineTo(scaleX(t.end), midY);
                     ctx.stroke();
 
-                    ctx.fillStyle = "#3b4754";
+                    ctx.fillStyle = lane.hasAssignedReads ? "#3b4754" : "#d1d5db";
                     for (const [exStart, exEnd] of t.exons) {
                         const x1 = scaleX(exStart - 1);
                         const x2 = scaleX(exEnd);
