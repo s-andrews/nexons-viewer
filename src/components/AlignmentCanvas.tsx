@@ -440,8 +440,9 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         return [...list].sort((a, b) => (!!b.isMane === !!a.isMane ? a.id.localeCompare(b.id) : b.isMane ? 1 : -1));
     }, [gene]);
 
-    // Every transcript (plus the unassigned-reads lane) starts collapsed to a coverage density
-    // track; expanding one reveals its individual reads. Reset when a different gene is opened.
+    // Every transcript (plus the unassigned-reads lane) starts collapsed to just its exon
+    // structure; expanding one reveals its quantitative density track and individual reads.
+    // Reset when a different gene is opened.
     const [collapsedIds, setCollapsedIds] = useState<Set<string>>(
         () => new Set([...transcripts.map((t) => t.id), UNASSIGNED_ID]),
     );
@@ -621,10 +622,8 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         // reads for this transcript - just show the exon model on its own.
         const hasDensity = (id: string) => (displayPeaks.get(id) ?? 0) > 0;
 
-        // The density track (when there's anything to show) stays visible whether a lane is
-        // collapsed or expanded - only the individual reads below it toggle. Otherwise expanding
-        // a lane removes the track and everything shifts up, so the row you just clicked jumps
-        // out from under the mouse.
+        // Collapsed lanes show only the transcript/merged exon structure. Expanded lanes add the
+        // quantitative density track (when there's anything to show) and the individual reads.
         const lanes: Lane[] = transcripts.map((t) => {
             const collapsed = collapsedIds.has(t.id);
             const reads = visible.filter((r) => r.tags.nT === t.id);
@@ -657,10 +656,8 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         let height = 30 + GENE_REGION_ROW_H + SEP_GAP + 1 + SEP_GAP + contextHeight;
         for (const lane of lanes) {
             height += SEP_GAP + 1 + SEP_GAP;
-            // density track (when there's anything to show) sits above the exon-model row and
-            // stays put whether the lane is collapsed or expanded - only what's below it toggles
             const id = lane.kind === "transcript" ? lane.t.id : UNASSIGNED_ID;
-            height += hasDensity(id) ? DENSITY_TRACK_H + DENSITY_GAP + EXON_ROW_H : EXON_ROW_H;
+            height += !lane.collapsed && hasDensity(id) ? DENSITY_TRACK_H + DENSITY_GAP + EXON_ROW_H : EXON_ROW_H;
             if (lane.collapsed) {
                 height += LANE_BOTTOM_GAP;
             } else if (lane.kind === "transcript") {
@@ -758,9 +755,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                     drawToggleLabel(ctx, marginL, width, t.id, lane.collapsed, rowY, EXON_ROW_H, t.id, hitRects, t.isMane);
                 };
 
-                // density track sits above its transcript's exon row and stays put whether
-                // collapsed or expanded, so the row doesn't jump out from under the mouse on toggle
-                if (hasDensity(t.id)) {
+                if (!lane.collapsed && hasDensity(t.id)) {
                     drawDensityTrack(ctx, pxFrom, lane.density!, displayPeaks.get(t.id) ?? 0, y, DENSITY_TRACK_H);
                     y += DENSITY_TRACK_H + DENSITY_GAP;
                 }
@@ -793,7 +788,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                     drawToggleLabel(ctx, marginL, width, "Unassigned reads", lane.collapsed, rowY, EXON_ROW_H, UNASSIGNED_ID, hitRects);
                 };
 
-                if (hasDensity(UNASSIGNED_ID)) {
+                if (!lane.collapsed && hasDensity(UNASSIGNED_ID)) {
                     drawDensityTrack(ctx, pxFrom, lane.density!, displayPeaks.get(UNASSIGNED_ID) ?? 0, y, DENSITY_TRACK_H);
                     y += DENSITY_TRACK_H + DENSITY_GAP;
                 }
