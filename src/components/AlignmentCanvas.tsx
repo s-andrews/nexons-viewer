@@ -94,29 +94,20 @@ function compareByExonStructure(a: BamRecord, b: BamRecord): number {
     return a.start - b.start;
 }
 
-function packReads(reads: BamRecord[], scaleX: ScaleX): { reads: PackedRead[]; rowCount: number } {
+function packReads(reads: BamRecord[]): { reads: PackedRead[]; rowCount: number } {
     const sorted = [...reads].sort(compareByExonStructure) as PackedRead[];
-    const rowEndPx: number[] = [];
-    for (const r of sorted) {
-        const xStart = scaleX(r.start);
-        const xEnd = scaleX(r.end);
-        let placedRow = -1;
-        for (let i = 0; i < rowEndPx.length; i++) {
-            if (rowEndPx[i] <= xStart) { placedRow = i; break; }
-        }
-        if (placedRow === -1) { placedRow = rowEndPx.length; rowEndPx.push(0); }
-        rowEndPx[placedRow] = xEnd + PX_GAP_MIN;
-        r.row = placedRow;
-    }
-    return { reads: sorted, rowCount: rowEndPx.length };
+    sorted.forEach((r, i) => {
+        r.row = i;
+    });
+    return { reads: sorted, rowCount: sorted.length };
 }
 
 // Packs primary reads first (rows 0..N), then secondary reads below them (rows N..)
-function layoutLane(reads: BamRecord[], scaleX: ScaleX) {
+function layoutLane(reads: BamRecord[]) {
     const primary = reads.filter((r) => !r.isSecondary);
     const secondary = reads.filter((r) => r.isSecondary);
-    const packedPrimary = packReads(primary, scaleX);
-    const packedSecondary = packReads(secondary, scaleX);
+    const packedPrimary = packReads(primary);
+    const packedSecondary = packReads(secondary);
     for (const r of packedSecondary.reads) r.row += packedPrimary.rowCount;
     return {
         reads: [...packedPrimary.reads, ...packedSecondary.reads],
@@ -638,7 +629,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
             return {
                 kind: "transcript", t, collapsed,
                 hasAssignedReads: records.some((r) => r.tags.nT === t.id),
-                layout: collapsed ? null : layoutLane(reads, scaleX),
+                layout: collapsed ? null : layoutLane(reads),
                 density: computeCoverage(reads, scaleX, pxFrom, pxTo),
             };
         });
@@ -651,7 +642,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         lanes.push(
             unassignedCollapsed
                 ? { kind: "unassigned", collapsed: true, geneLevelLayout: null, noMatchLayout: null, density: unassignedDensity }
-                : { kind: "unassigned", collapsed: false, geneLevelLayout: layoutLane(geneLevelReads, scaleX), noMatchLayout: layoutLane(noMatchReads, scaleX), density: unassignedDensity },
+                : { kind: "unassigned", collapsed: false, geneLevelLayout: layoutLane(geneLevelReads), noMatchLayout: layoutLane(noMatchReads), density: unassignedDensity },
         );
 
         const geneItems = overlappingGenes
