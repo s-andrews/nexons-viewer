@@ -316,6 +316,13 @@ export default function App() {
     const visibleSlotCount = layoutMode;
     const assignedCount = slots.slice(0, visibleSlotCount).filter((s) => s.sourceId !== null).length;
     const sourceOptions = useMemo(() => sources.map((s) => ({ id: s.id, label: s.label })), [sources]);
+    const onboardingStep = exonIndexById.size === 0
+        ? "gtf"
+        : !anyBamReady
+            ? "bam"
+            : tabs.length === 0
+                ? "gene"
+                : null;
 
     function renderSlot(slotIndex: number) {
         const slot = slots[slotIndex];
@@ -348,6 +355,7 @@ export default function App() {
                 exonFileName={exonFileName}
                 gtfProgress={gtfProgress}
                 bamFileLabel={bamFileLabel}
+                onboardingStep={onboardingStep === "gtf" || onboardingStep === "bam" ? onboardingStep : null}
                 status={status}
                 tslLevel={tslLevel}
                 onTslLevelChange={handleTslLevelChange}
@@ -364,6 +372,7 @@ export default function App() {
                 addressBarOpen={addressBarOpen}
                 exonIndexById={exonIndexById}
                 exonIndexReady={exonIndexById.size > 0}
+                showAddGeneHint={onboardingStep === "gene"}
                 onSelectTab={handleSelectTab}
                 onCloseTab={handleCloseTab}
                 onOpenAddressBar={handleOpenAddressBar}

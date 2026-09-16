@@ -12,6 +12,7 @@ interface GeneTabsProps {
     addressBarOpen: boolean;
     exonIndexById: Map<string, ExonGene>;
     exonIndexReady: boolean;
+    showAddGeneHint: boolean;
     onSelectTab: (id: string) => void;
     onCloseTab: (id: string) => void;
     onOpenAddressBar: () => void;
@@ -25,6 +26,7 @@ export default function GeneTabs({
     addressBarOpen,
     exonIndexById,
     exonIndexReady,
+    showAddGeneHint,
     onSelectTab,
     onCloseTab,
     onOpenAddressBar,
@@ -85,7 +87,8 @@ export default function GeneTabs({
                 })}
                 <button
                     type="button"
-                    className={"gene-tab-add" + (tabs.length === 0 ? " gene-tab-add-empty" : "")}
+                    className={"gene-tab-add" + (tabs.length === 0 ? " gene-tab-add-empty" : "") + (showAddGeneHint ? " onboarding-highlight onboarding-highlight-right" : "")}
+                    data-onboarding-hint={showAddGeneHint ? "Finally: click + to choose a gene to view." : undefined}
                     onClick={onOpenAddressBar}
                     title="Open a gene in a new tab"
                 >

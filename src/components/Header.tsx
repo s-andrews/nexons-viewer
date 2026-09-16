@@ -6,6 +6,7 @@ interface HeaderProps {
     exonFileName: string;
     gtfProgress: number | null;
     bamFileLabel: string;
+    onboardingStep: "gtf" | "bam" | null;
     status: string;
     tslLevel: string;
     onTslLevelChange: (level: string) => void;
@@ -25,6 +26,7 @@ export default function Header({
     exonFileName,
     gtfProgress,
     bamFileLabel,
+    onboardingStep,
     status,
     tslLevel,
     onTslLevelChange,
@@ -78,7 +80,11 @@ export default function Header({
                 </select>
             </label>
 
-            <label className={`file-label${gtfProgress !== null ? " file-label-progress" : ""}`} htmlFor="exonInput">
+            <label
+                className={`file-label${gtfProgress !== null ? " file-label-progress" : ""}${onboardingStep === "gtf" ? " onboarding-highlight" : ""}`}
+                data-onboarding-hint={onboardingStep === "gtf" ? "Start here: load a GTF or exon-index JSON file." : undefined}
+                htmlFor="exonInput"
+            >
                 {gtfProgress !== null && (
                     <span className="progress-fill" style={{ width: `${Math.min(100, Math.round(gtfProgress * 100))}%` }} />
                 )}
@@ -92,7 +98,11 @@ export default function Header({
                 <input type="file" id="exonInput" accept=".json,.gtf,.gtf.txt" disabled={gtfProgress !== null} onChange={handleExonInput} />
             </label>
 
-            <label className="file-label" htmlFor="bamBaiInput">
+            <label
+                className={`file-label${onboardingStep === "bam" ? " onboarding-highlight" : ""}`}
+                data-onboarding-hint={onboardingStep === "bam" ? "Next: select each BAM together with its matching BAI file." : undefined}
+                htmlFor="bamBaiInput"
+            >
                 BAM + BAI: <span className="fname">{bamFileLabel}</span>
                 <input type="file" id="bamBaiInput" accept=".bam,.bai" multiple onChange={handleBamBaiInput} />
             </label>
