@@ -6,34 +6,21 @@ import type { BamRecord, CigarOp, ExonGene, ExonTranscript } from "../types";
 // would re-fire the peaks-reporting effect every render too.
 const EMPTY_TRANSCRIPTS: ExonTranscript[] = [];
 
-// Reads sharing a gene (nG) share a hue, so an overlapping gene's reads (parked in the
-// "no match to this gene" lane) can be visually traced back to which nearby gene they actually
-// belong to. Confidence (nR: unique/partial/gene/multi) is shown as fill *style* instead of hue -
-// see drawConfidenceBlock. "multi" reads may be compatible with more than one gene (per
-// nexons.py, not just one transcript), so they don't get a gene hue at all.
-const GENE_HUE_PALETTE = [
-    "31,119,180", "255,127,14", "44,160,44", "214,39,40", "148,103,189",
-    "140,86,75", "227,119,194", "188,189,34", "23,190,207", "241,143,1",
-];
+// Read hue is semantic: green means the read is assigned to the currently displayed gene,
+// purple means it is assigned to another single gene, and gray means multi-gene or no hit.
+// Confidence (nR: unique/partial/gene/multi) is shown as fill *style* instead of hue - see
+// drawConfidenceBlock.
+const CURRENT_GENE_GREEN = "34,197,94";
+const OTHER_GENE_PURPLE = "147,51,234";
 const NEUTRAL_GRAY = "140,140,140";
 
-function hashStringToIndex(s: string, mod: number): number {
-    let h = 0;
-    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-    return Math.abs(h) % mod;
-}
-
-function colorForGene(geneId: string | undefined): string {
-    if (!geneId) return NEUTRAL_GRAY;
-    return GENE_HUE_PALETTE[hashStringToIndex(geneId, GENE_HUE_PALETTE.length)];
-}
-
-function colorForRead(r: BamRecord): string {
+function colorForRead(r: BamRecord, currentGene: ExonGene): string {
     const nR = typeof r.tags.nR === "string" ? r.tags.nR : undefined;
-    if (nR === "unique" || nR === "partial" || nR === "gene") {
-        return colorForGene(typeof r.tags.nG === "string" ? r.tags.nG : undefined);
-    }
-    return NEUTRAL_GRAY; // "multi" (ambiguous across genes) or no hit at all
+    if (nR !== "unique" && nR !== "partial" && nR !== "gene") return NEUTRAL_GRAY;
+
+    const nG = typeof r.tags.nG === "string" ? r.tags.nG : undefined;
+    if (!nG) return NEUTRAL_GRAY;
+    return nG === currentGene.id || nG === currentGene.name ? CURRENT_GENE_GREEN : OTHER_GENE_PURPLE;
 }
 
 // There's no genomics-standard color scheme for CIGAR text (the SAM spec defines the ops,
@@ -282,9 +269,9 @@ function drawConfidenceBlock(ctx: CanvasRenderingContext2D, x: number, y: number
     }
 }
 
-function drawReadRow(ctx: CanvasRenderingContext2D, r: PackedRead, rowY: number, scaleX: ScaleX, showCigarDetail: boolean, selected: boolean, hitRects: HitRect[]) {
+function drawReadRow(ctx: CanvasRenderingContext2D, r: PackedRead, rowY: number, scaleX: ScaleX, showCigarDetail: boolean, selected: boolean, currentGene: ExonGene, hitRects: HitRect[]) {
     const midY = rowY + ROW_H / 2;
-    const rgb = colorForRead(r);
+    const rgb = colorForRead(r, currentGene);
     const nR = typeof r.tags.nR === "string" ? r.tags.nR : undefined;
 
     ctx.strokeStyle = `rgba(${rgb},${r.isSecondary ? 0.4 : 0.7})`;
@@ -798,7 +785,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                 } else {
                     y += LANE_INNER_GAP;
                     for (const r of lane.layout!.reads) {
-                        drawReadRow(ctx, r, y + r.row * (ROW_H + ROW_GAP), scaleX, showCigarDetail, r === selectedRead, hitRects);
+                        drawReadRow(ctx, r, y + r.row * (ROW_H + ROW_GAP), scaleX, showCigarDetail, r === selectedRead, gene, hitRects);
                     }
                     y += lane.layout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
                 }
@@ -838,7 +825,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                     ctx.fillText("Gene-level match, no specific transcript (nR: gene)", 4, y + 11);
                     y += 14 + LANE_INNER_GAP;
                     for (const r of lane.geneLevelLayout!.reads) {
-                        drawReadRow(ctx, r, y + r.row * (ROW_H + ROW_GAP), scaleX, showCigarDetail, r === selectedRead, hitRects);
+                        drawReadRow(ctx, r, y + r.row * (ROW_H + ROW_GAP), scaleX, showCigarDetail, r === selectedRead, gene, hitRects);
                     }
                     y += lane.geneLevelLayout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
 
@@ -847,7 +834,7 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
                     ctx.fillText("No match to this gene (nR: blank/multi) — may align to an overlapping gene", 4, y + 11);
                     y += 14 + LANE_INNER_GAP;
                     for (const r of lane.noMatchLayout!.reads) {
-                        drawReadRow(ctx, r, y + r.row * (ROW_H + ROW_GAP), scaleX, showCigarDetail, r === selectedRead, hitRects);
+                        drawReadRow(ctx, r, y + r.row * (ROW_H + ROW_GAP), scaleX, showCigarDetail, r === selectedRead, gene, hitRects);
                     }
                     y += lane.noMatchLayout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
                 }
