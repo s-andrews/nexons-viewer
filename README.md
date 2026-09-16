@@ -1,4 +1,4 @@
-# Nexons read viewer
+![Nexons read viewer logo](public/nexons_viewer_logo_path.svg)
 
 A web-based genome data viewer for comparing local BAM alignments against transcript models from a GTF or prebuilt exon-index JSON file.
 
