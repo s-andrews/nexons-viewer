@@ -509,9 +509,11 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
 
     // Reset pan/zoom whenever a different gene's alignments are opened
     useEffect(() => {
-        updateView({ start: hardStart0, end: hardEnd0 });
+        const nextView = { start: hardStart0, end: hardEnd0 };
+        setView(nextView);
+        if (!locked) onViewChange(nextView);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [hardStart0, hardEnd0]);
+    }, [hardStart0, hardEnd0, locked]);
 
     const overlappingGenes = useMemo(
         () =>
@@ -537,10 +539,18 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
     }, [transcripts, overlappingGenes]);
 
     useLayoutEffect(() => {
-        if (containerRef.current) {
-            setWidth(Math.max(600, containerRef.current.clientWidth - 20 || document.body.clientWidth - 60));
-        }
-    }, [gene.id]);
+        const container = containerRef.current;
+        if (!container) return;
+
+        const updateWidth = () => {
+            setWidth(Math.max(600, container.clientWidth - 20 || document.body.clientWidth - 60));
+        };
+        updateWidth();
+
+        const observer = new ResizeObserver(updateWidth);
+        observer.observe(container);
+        return () => observer.disconnect();
+    }, []);
 
     function clampView(newStart: number, newEnd: number): [number, number] {
         const w = newEnd - newStart;

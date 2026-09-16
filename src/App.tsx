@@ -281,6 +281,37 @@ export default function App() {
     }, [currentGeneId, slots, layoutMode, sources, exonIndexById]);
 
     const currentGene = currentGeneId ? exonIndexById.get(currentGeneId) ?? null : null;
+
+    useEffect(() => {
+        if (!currentGene || !currentGeneId) return;
+
+        const lockedSources = slots
+            .slice(0, layoutMode)
+            .filter((slot) => slot.locked && slot.sourceId !== null)
+            .map((slot) => sources.find((source) => source.id === slot.sourceId))
+            .filter((source): source is BamSource => !!source && source.ready);
+
+        if (lockedSources.length <= 1) return;
+        const settled = lockedSources.every((source) =>
+            source.queriedGeneId === currentGeneId
+            && !source.queryLoading
+            && (source.records !== null || source.queryError !== null)
+        );
+        if (!settled) return;
+
+        let start = currentGene.start - 1;
+        let end = currentGene.end;
+        for (const source of lockedSources) {
+            for (const record of source.records ?? []) {
+                if (record.start < start) start = record.start;
+                if (record.end > end) end = record.end;
+            }
+        }
+
+        const pad = Math.max(200, Math.round((end - start) * 0.05));
+        setSharedView({ start: start - pad, end: end + pad });
+    }, [currentGene, currentGeneId, slots, layoutMode, sources]);
+
     const visibleSlotCount = layoutMode;
     const assignedCount = slots.slice(0, visibleSlotCount).filter((s) => s.sourceId !== null).length;
     const sourceOptions = useMemo(() => sources.map((s) => ({ id: s.id, label: s.label })), [sources]);
