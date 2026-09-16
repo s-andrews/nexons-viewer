@@ -37,7 +37,7 @@ function renderCigarSpans(cigar: CigarOp[]) {
     ));
 }
 
-const ROW_H = 12;
+const ROW_H = 6;
 const ROW_GAP = 3;
 const PX_GAP_MIN = 2;
 const EXON_ROW_H = 10;
