@@ -23,6 +23,15 @@ function colorForRead(r: BamRecord, currentGene: ExonGene): string {
     return nG === currentGene.id || nG === currentGene.name ? CURRENT_GENE_GREEN : OTHER_GENE_PURPLE;
 }
 
+function formatTranscriptReadSuffix(readCount: number, geneReadCount: number): string {
+    if (readCount === 0) return "";
+    const percentage = geneReadCount > 0 ? (readCount / geneReadCount) * 100 : 0;
+    const formattedPercentage = percentage >= 10
+        ? Math.round(percentage).toString()
+        : percentage.toFixed(1);
+    return ` [${readCount.toLocaleString()} ${formattedPercentage}%]`;
+}
+
 // There's no genomics-standard color scheme for CIGAR text (the SAM spec defines the ops,
 // not a visual convention), so this stays plain except for a muted tone on clipped bases -
 // they're present in the read but not part of the reference alignment.
@@ -589,6 +598,7 @@ export default function AlignmentCanvas({
 
         const visible = records.filter((r) => r.start < effectiveView.end && r.end > effectiveView.start);
         const assignedTranscriptIds = new Set(transcripts.map((t) => t.id));
+        const geneReadCount = records.filter((r) => r.tags.nG === gene.id || r.tags.nG === gene.name).length;
 
         type TranscriptLane = {
             kind: "transcript";
@@ -741,7 +751,7 @@ export default function AlignmentCanvas({
                     if (t.name && t.name !== t.id) {
                         ctx.fillStyle = t.isMane ? "#1f2933" : "#6b7280";
                         ctx.font = `${t.isMane ? "700" : "400"} 11px -apple-system, sans-serif`;
-                        const readCountSuffix = lane.readCount > 0 ? ` [${lane.readCount.toLocaleString()}]` : "";
+                        const readCountSuffix = formatTranscriptReadSuffix(lane.readCount, geneReadCount);
                         ctx.fillText(`${t.name}${readCountSuffix}`, scaleX(t.end) + 6, rowY + EXON_ROW_H - 1);
                     }
 
