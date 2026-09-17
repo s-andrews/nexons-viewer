@@ -82,7 +82,7 @@ export default function Header({
 
             <label
                 className={`file-label${gtfProgress !== null ? " file-label-progress" : ""}${onboardingStep === "gtf" ? " onboarding-highlight" : ""}`}
-                data-onboarding-hint={onboardingStep === "gtf" ? "Start here: load a GTF or exon-index JSON file." : undefined}
+                data-onboarding-hint={onboardingStep === "gtf" ? "Start here: load a GTF file." : undefined}
                 htmlFor="exonInput"
             >
                 {gtfProgress !== null && (
@@ -95,7 +95,7 @@ export default function Header({
                             ? `GTF: ${exonFileName}`
                             : "Select GTF File"}
                 </span>
-                <input type="file" id="exonInput" accept=".json,.gtf,.gtf.txt" disabled={gtfProgress !== null} onChange={handleExonInput} />
+                <input type="file" id="exonInput" accept=".json,.gtf,.gtf.txt,.gtf.gz,.gz" disabled={gtfProgress !== null} onChange={handleExonInput} />
             </label>
 
             <label

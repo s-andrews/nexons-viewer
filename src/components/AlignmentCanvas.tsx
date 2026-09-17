@@ -64,6 +64,9 @@ const SEP_GAP = 6;
 const LANE_INNER_GAP = 4;
 const LANE_BOTTOM_GAP = 10;
 const MIN_VIEW_BP = 30;
+const KEYBOARD_PAN_FRACTION = 0.05;
+const ZOOM_IN_FACTOR = 0.8;
+const ZOOM_OUT_FACTOR = 1.25;
 const CIGAR_DETAIL_MIN_PX_PER_BASE = 0.6;
 const DENSITY_TRACK_H = 18;
 const DENSITY_GAP = 2; // tight gap between a lane's density track and its exon-model row
@@ -933,7 +936,7 @@ export default function AlignmentCanvas({
         const mx = evt.clientX - rect.left;
         const curWidth = effectiveView.end - effectiveView.start;
         const cursorGenomic = effectiveView.start + ((mx - marginL) / (width - marginL - MARGIN_R)) * curWidth;
-        const factor = evt.deltaY > 0 ? 1.25 : 0.8;
+        const factor = evt.deltaY > 0 ? ZOOM_OUT_FACTOR : ZOOM_IN_FACTOR;
         const newWidth = Math.max(MIN_VIEW_BP, Math.min(curWidth * factor, hardEnd0 - hardStart0));
         const ratio = (cursorGenomic - effectiveView.start) / curWidth;
         const newStart = cursorGenomic - ratio * newWidth;
@@ -1032,25 +1035,17 @@ export default function AlignmentCanvas({
         setHoverToggle(hit?.kind === "toggle");
     }
 
-    // Left/Right arrows pan; Ctrl/Cmd+Left/Right zoom out/in. Up/Down are swallowed here too -
-    // left unhandled, the browser's default action for an unhandled arrow key on a focused
-    // element can shift focus onward to the next focusable element (e.g. the next panel's BAM
-    // picker <select>, which then treats Up/Down as "change selected option"), so every arrow
-    // key needs an explicit preventDefault while this canvas has focus, not just the ones we act on.
+    // Left/Right pan by a small fixed fraction of the current view. Up/Down use the same zoom
+    // factors as Ctrl/Cmd+scroll, centered on the current view.
     function handleCanvasKeyDown(evt: React.KeyboardEvent<HTMLCanvasElement>) {
         if (evt.key !== "ArrowRight" && evt.key !== "ArrowLeft" && evt.key !== "ArrowUp" && evt.key !== "ArrowDown") return;
         evt.preventDefault();
 
-        if (evt.key === "ArrowUp" || evt.key === "ArrowDown") return;
-
-        const zoom = evt.ctrlKey || evt.metaKey;
-        const forward = evt.key === "ArrowRight";
-
-        if (zoom) {
+        if (evt.key === "ArrowUp" || evt.key === "ArrowDown") {
             const curWidth = effectiveView.end - effectiveView.start;
-            setViewWidth(curWidth * (forward ? 0.8 : 1.2));
+            setViewWidth(curWidth * (evt.key === "ArrowUp" ? ZOOM_IN_FACTOR : ZOOM_OUT_FACTOR));
         } else {
-            panByFraction(forward ? 0.25 : -0.25);
+            panByFraction(evt.key === "ArrowRight" ? -KEYBOARD_PAN_FRACTION : KEYBOARD_PAN_FRACTION);
         }
     }
 
@@ -1081,7 +1076,7 @@ export default function AlignmentCanvas({
                         aria-label="Minimum assigned reads per transcript"
                     />
                 </label>
-                <span className="plot-hint">ctrl/⌘+scroll to zoom · shift+scroll, drag, or ←/→ to pan · double-click to reset</span>
+                <span className="plot-hint">ctrl/⌘+scroll or ↑/↓ to zoom · shift+scroll, drag, or ←/→ to pan · double-click to reset</span>
             </div>
 
             <canvas
