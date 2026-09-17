@@ -51,7 +51,7 @@ const LANE_INNER_GAP = 4;
 const LANE_BOTTOM_GAP = 10;
 const MIN_VIEW_BP = 30;
 const CIGAR_DETAIL_MIN_PX_PER_BASE = 0.6;
-const DENSITY_TRACK_H = 36;
+const DENSITY_TRACK_H = 18;
 const DENSITY_GAP = 2; // tight gap between a collapsed lane's density track and its exon-model row
 const UNASSIGNED_ID = "__unassigned__";
 const TOGGLE_GLYPH_W = 14;
@@ -184,8 +184,8 @@ function computeMaxDepth(reads: BamRecord[]): number {
 }
 
 // Fixed track height regardless of the lane's absolute depth (a peak of 3 and a peak of 3000
-// both fill the band). The label at the left is the assigned-read count for this sample.
-function drawDensityTrack(ctx: CanvasRenderingContext2D, pxFrom: number, depth: Float64Array, peak: number, readCount: number, trackY: number, trackH: number) {
+// both fill the band).
+function drawDensityTrack(ctx: CanvasRenderingContext2D, pxFrom: number, depth: Float64Array, peak: number, trackY: number, trackH: number) {
     ctx.fillStyle = "rgba(37,99,235,0.55)";
     for (let i = 0; i < depth.length; i++) {
         if (depth[i] <= 0) continue;
@@ -195,14 +195,6 @@ function drawDensityTrack(ctx: CanvasRenderingContext2D, pxFrom: number, depth: 
     ctx.strokeStyle = "#d7dbe0";
     ctx.lineWidth = 1;
     ctx.strokeRect(pxFrom + 0.5, trackY + 0.5, Math.max(1, depth.length - 1), trackH - 1);
-
-    const label = readCount.toLocaleString();
-    ctx.font = "600 10px -apple-system, sans-serif";
-    const labelWidth = ctx.measureText(label).width;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(pxFrom + 2, trackY - 1, labelWidth + 4, 12);
-    ctx.fillStyle = "#374151";
-    ctx.fillText(label, pxFrom + 4, trackY + 9);
 }
 
 // Confidence (nR) is shown as fill style rather than hue, since hue is reserved for gene
@@ -757,7 +749,8 @@ export default function AlignmentCanvas({
                 };
 
                 if (!lane.collapsed && hasDensity(t.id)) {
-                    drawDensityTrack(ctx, pxFrom, lane.density!, ownPeaks.get(t.id) ?? 0, lane.readCount, y, DENSITY_TRACK_H);
+                    drawDensityTrack(ctx, pxFrom, lane.density!, ownPeaks.get(t.id) ?? 0, y, DENSITY_TRACK_H);
+                    hitRects.push({ x1: 0, x2: width - MARGIN_R, y1: y, y2: y + DENSITY_TRACK_H, kind: "toggle", id: t.id });
                     y += DENSITY_TRACK_H + DENSITY_GAP;
                 }
                 drawExonRow(y);
@@ -790,7 +783,8 @@ export default function AlignmentCanvas({
                 };
 
                 if (!lane.collapsed && hasDensity(UNASSIGNED_ID)) {
-                    drawDensityTrack(ctx, pxFrom, lane.density!, ownPeaks.get(UNASSIGNED_ID) ?? 0, lane.readCount, y, DENSITY_TRACK_H);
+                    drawDensityTrack(ctx, pxFrom, lane.density!, ownPeaks.get(UNASSIGNED_ID) ?? 0, y, DENSITY_TRACK_H);
+                    hitRects.push({ x1: 0, x2: width - MARGIN_R, y1: y, y2: y + DENSITY_TRACK_H, kind: "toggle", id: UNASSIGNED_ID });
                     y += DENSITY_TRACK_H + DENSITY_GAP;
                 }
                 drawMergedExonRow(y);
