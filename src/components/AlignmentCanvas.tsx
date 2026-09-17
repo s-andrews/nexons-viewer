@@ -66,9 +66,11 @@ const LANE_BOTTOM_GAP = 10;
 const MIN_VIEW_BP = 30;
 const CIGAR_DETAIL_MIN_PX_PER_BASE = 0.6;
 const DENSITY_TRACK_H = 18;
-const DENSITY_GAP = 2; // tight gap between a collapsed lane's density track and its exon-model row
+const DENSITY_GAP = 2; // tight gap between a lane's density track and its exon-model row
 const UNASSIGNED_ID = "__unassigned__";
 const TOGGLE_GLYPH_W = 14;
+
+type LaneViewMode = "transcript" | "reads" | "density";
 
 type ScaleX = (g: number) => number;
 
@@ -455,24 +457,23 @@ export default function AlignmentCanvas({
         return orderedTranscripts.filter((transcript) => visibleIds.has(transcript.id));
     }, [gene, records, orderedTranscripts, minimumReadCount, visibleTranscriptIds]);
 
-    // Every transcript (plus the unassigned-reads lane) starts collapsed to just its exon
-    // structure; expanding one reveals its quantitative density track and individual reads.
+    // Every transcript (plus the unassigned-reads lane) starts with just its exon structure.
+    // Repeated clicks cycle through reads+density, density only, and back to transcript only.
     // Reset when a different gene is opened.
-    const [collapsedIds, setCollapsedIds] = useState<Set<string>>(
-        () => new Set([...(gene.transcripts || EMPTY_TRANSCRIPTS).map((t) => t.id), UNASSIGNED_ID]),
-    );
+    const [laneViewModes, setLaneViewModes] = useState<Map<string, LaneViewMode>>(() => new Map());
 
     useEffect(() => {
-        setCollapsedIds(new Set([...(gene.transcripts || EMPTY_TRANSCRIPTS).map((t) => t.id), UNASSIGNED_ID]));
+        setLaneViewModes(new Map());
         setSelectedRead(null);
         setTooltip(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [gene.id]);
 
-    function toggleCollapsed(id: string) {
-        setCollapsedIds((prev) => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id); else next.add(id);
+    function cycleLaneView(id: string) {
+        setLaneViewModes((prev) => {
+            const next = new Map(prev);
+            const current = next.get(id) ?? "transcript";
+            next.set(id, current === "transcript" ? "reads" : current === "reads" ? "density" : "transcript");
             return next;
         });
     }
@@ -622,6 +623,8 @@ export default function AlignmentCanvas({
             kind: "transcript";
             t: ExonTranscript;
             collapsed: boolean;
+            showDensity: boolean;
+            showReads: boolean;
             hasAssignedReads: boolean;
             readCount: number;
             layout: ReturnType<typeof layoutLane> | null;
@@ -630,6 +633,8 @@ export default function AlignmentCanvas({
         type UnassignedLane = {
             kind: "unassigned";
             collapsed: boolean;
+            showDensity: boolean;
+            showReads: boolean;
             geneLevelLayout: ReturnType<typeof layoutLane> | null;
             noMatchLayout: ReturnType<typeof layoutLane> | null;
             density: Float64Array | null;
@@ -649,12 +654,15 @@ export default function AlignmentCanvas({
         const lanes: Lane[] = transcripts.map((t) => {
             const reads = visible.filter((r) => r.tags.nT === t.id);
             const readCount = records.filter((r) => r.tags.nT === t.id).length;
-            const collapsed = collapsedIds.has(t.id) || readCount === 0;
+            const mode = readCount > 0 ? laneViewModes.get(t.id) ?? "transcript" : "transcript";
+            const showReads = mode === "reads";
             return {
-                kind: "transcript", t, collapsed,
+                kind: "transcript", t, collapsed: mode === "transcript",
+                showDensity: mode !== "transcript",
+                showReads,
                 hasAssignedReads: readCount > 0,
                 readCount,
-                layout: collapsed ? null : layoutLane(reads),
+                layout: showReads ? layoutLane(reads) : null,
                 density: computeCoverage(reads, scaleX, pxFrom, pxTo),
             };
         });
@@ -663,13 +671,19 @@ export default function AlignmentCanvas({
         const unassignedReadCount = records.filter((r) => !r.tags.nT || !assignedTranscriptIds.has(r.tags.nT as string)).length;
         const geneLevelReads = unassigned.filter((r) => r.tags.nR === "gene");
         const noMatchReads = unassigned.filter((r) => r.tags.nR !== "gene");
-        const unassignedCollapsed = collapsedIds.has(UNASSIGNED_ID) || unassignedReadCount === 0;
+        const unassignedMode = unassignedReadCount > 0 ? laneViewModes.get(UNASSIGNED_ID) ?? "transcript" : "transcript";
+        const showUnassignedReads = unassignedMode === "reads";
         const unassignedDensity = computeCoverage([...geneLevelReads, ...noMatchReads], scaleX, pxFrom, pxTo);
-        lanes.push(
-            unassignedCollapsed
-                ? { kind: "unassigned", collapsed: true, geneLevelLayout: null, noMatchLayout: null, density: unassignedDensity, readCount: unassignedReadCount }
-                : { kind: "unassigned", collapsed: false, geneLevelLayout: layoutLane(geneLevelReads), noMatchLayout: layoutLane(noMatchReads), density: unassignedDensity, readCount: unassignedReadCount },
-        );
+        lanes.push({
+            kind: "unassigned",
+            collapsed: unassignedMode === "transcript",
+            showDensity: unassignedMode !== "transcript",
+            showReads: showUnassignedReads,
+            geneLevelLayout: showUnassignedReads ? layoutLane(geneLevelReads) : null,
+            noMatchLayout: showUnassignedReads ? layoutLane(noMatchReads) : null,
+            density: unassignedDensity,
+            readCount: unassignedReadCount,
+        });
 
         const geneItems = overlappingGenes
             .filter((g) => g.start - 1 < effectiveView.end && g.end > effectiveView.start)
@@ -683,10 +697,10 @@ export default function AlignmentCanvas({
         for (const lane of lanes) {
             height += SEP_GAP;
             const id = lane.kind === "transcript" ? lane.t.id : UNASSIGNED_ID;
-            height += !lane.collapsed && hasDensity(id) ? DENSITY_TRACK_H + DENSITY_GAP + EXON_ROW_H : EXON_ROW_H;
-            if (!lane.collapsed && lane.kind === "transcript") {
+            height += lane.showDensity && hasDensity(id) ? DENSITY_TRACK_H + DENSITY_GAP + EXON_ROW_H : EXON_ROW_H;
+            if (lane.showReads && lane.kind === "transcript") {
                 height += LANE_INNER_GAP + lane.layout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
-            } else if (!lane.collapsed && lane.kind === "unassigned") {
+            } else if (lane.showReads && lane.kind === "unassigned") {
                 height += LANE_INNER_GAP;
                 height += 14 + LANE_INNER_GAP + lane.geneLevelLayout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
                 height += 14 + LANE_INNER_GAP + lane.noMatchLayout!.rowCount * (ROW_H + ROW_GAP) + LANE_BOTTOM_GAP;
@@ -776,14 +790,14 @@ export default function AlignmentCanvas({
                     drawToggleLabel(ctx, marginL, width, t.id, lane.collapsed, rowY, EXON_ROW_H, t.id, hitRects, t.isMane, lane.readCount > 0);
                 };
 
-                if (!lane.collapsed && hasDensity(t.id)) {
+                if (lane.showDensity && hasDensity(t.id)) {
                     drawDensityTrack(ctx, pxFrom, lane.density!, ownPeaks.get(t.id) ?? 0, y, DENSITY_TRACK_H);
                     hitRects.push({ x1: 0, x2: width - MARGIN_R, y1: y, y2: y + DENSITY_TRACK_H, kind: "toggle", id: t.id });
                     y += DENSITY_TRACK_H + DENSITY_GAP;
                 }
                 drawExonRow(y);
                 y += EXON_ROW_H;
-                if (!lane.collapsed) {
+                if (lane.showReads) {
                     y += LANE_INNER_GAP;
                     for (const r of lane.layout!.reads) {
                         drawReadRow(ctx, r, y + r.row * (ROW_H + ROW_GAP), scaleX, showCigarDetail, r === selectedRead, gene, hitRects);
@@ -810,14 +824,14 @@ export default function AlignmentCanvas({
                     drawToggleLabel(ctx, marginL, width, "Unassigned reads", lane.collapsed, rowY, EXON_ROW_H, UNASSIGNED_ID, hitRects, false, lane.readCount > 0);
                 };
 
-                if (!lane.collapsed && hasDensity(UNASSIGNED_ID)) {
+                if (lane.showDensity && hasDensity(UNASSIGNED_ID)) {
                     drawDensityTrack(ctx, pxFrom, lane.density!, ownPeaks.get(UNASSIGNED_ID) ?? 0, y, DENSITY_TRACK_H);
                     hitRects.push({ x1: 0, x2: width - MARGIN_R, y1: y, y2: y + DENSITY_TRACK_H, kind: "toggle", id: UNASSIGNED_ID });
                     y += DENSITY_TRACK_H + DENSITY_GAP;
                 }
                 drawMergedExonRow(y);
                 y += EXON_ROW_H;
-                if (!lane.collapsed) {
+                if (lane.showReads) {
                     y += LANE_INNER_GAP;
 
                     ctx.fillStyle = "#4b5563";
@@ -876,7 +890,7 @@ export default function AlignmentCanvas({
         }
 
         hitRectsRef.current = hitRects;
-    }, [effectiveView, records, gene, transcripts, overlappingGenes, marginL, width, geneStart0, collapsedIds, mergedExons, ownPeaks, selectedRead]);
+    }, [effectiveView, records, gene, transcripts, overlappingGenes, marginL, width, geneStart0, laneViewModes, mergedExons, ownPeaks, selectedRead]);
 
     // ---- tooltip positioning: flip to stay inside the viewport ----
     useLayoutEffect(() => {
@@ -951,7 +965,7 @@ export default function AlignmentCanvas({
         if (toggleHit) {
             setTooltip(null);
             setSelectedRead(null);
-            toggleCollapsed(toggleHit.id);
+            cycleLaneView(toggleHit.id);
             return;
         }
         draggingRef.current = { startX: evt.clientX, startY: evt.clientY, view: { ...effectiveView } };
