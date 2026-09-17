@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BamRecord, CigarOp, ExonGene, ExonTranscript } from "../types";
+import { compareTranscriptsByName, sortTranscriptsByReadCount, type TranscriptSortMode } from "../transcriptSort";
 
 // A stable reference (not a fresh `[]` literal per render) - ownPeaks below is memoized on
 // this array's identity, and an unstable fallback would recompute it every render.
@@ -53,6 +54,7 @@ const CIGAR_DETAIL_MIN_PX_PER_BASE = 0.6;
 const DENSITY_TRACK_H = 36;
 const DENSITY_GAP = 2; // tight gap between a collapsed lane's density track and its exon-model row
 const UNASSIGNED_ID = "__unassigned__";
+const TOGGLE_GLYPH_W = 14;
 
 type ScaleX = (g: number) => number;
 
@@ -351,8 +353,8 @@ function drawToggleLabel(
     ctx.fillRect(0, y - 1, marginL - 2, rowH + 2);
     ctx.fillStyle = bold ? "#1f2933" : "#6b7280";
     ctx.font = `${bold ? "700" : "400"} 11px -apple-system, sans-serif`;
-    const prefix = canToggle ? `${collapsed ? "▸" : "▾"} ` : "";
-    ctx.fillText(`${prefix}${label}`, 4, y + rowH - 1);
+    if (canToggle) ctx.fillText(collapsed ? "▸" : "▾", 4, y + rowH - 1);
+    ctx.fillText(label, 4 + TOGGLE_GLYPH_W, y + rowH - 1);
     if (canToggle) hitRects.push({ x1: 0, x2: width - MARGIN_R, y1: y - 1, y2: y + rowH + 1, kind: "toggle", id });
 }
 
@@ -393,21 +395,23 @@ interface AlignmentCanvasProps {
     exonIndexById: Map<string, ExonGene>;
     locked: boolean;
     sharedView: { start: number; end: number } | null;
+    transcriptSortMode: TranscriptSortMode;
+    onTranscriptSortModeChange: (mode: TranscriptSortMode) => void;
+    transcriptOrder: string[] | null;
     onViewChange: (view: { start: number; end: number }) => void;
 }
 
-const ZOOM_LEVELS: { label: string; bp: number | null }[] = [
-    { label: "Whole region", bp: null },
-    { label: "50 kb", bp: 50000 },
-    { label: "10 kb", bp: 10000 },
-    { label: "5 kb", bp: 5000 },
-    { label: "1 kb", bp: 1000 },
-    { label: "500 bp", bp: 500 },
-    { label: "200 bp", bp: 200 },
-    { label: "100 bp", bp: 100 },
-];
-
-export default function AlignmentCanvas({ gene, records, exonIndexById, locked, sharedView, onViewChange }: AlignmentCanvasProps) {
+export default function AlignmentCanvas({
+    gene,
+    records,
+    exonIndexById,
+    locked,
+    sharedView,
+    transcriptSortMode,
+    onTranscriptSortModeChange,
+    transcriptOrder,
+    onViewChange,
+}: AlignmentCanvasProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
@@ -422,8 +426,15 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
     const geneStart0 = gene.start - 1;
     const transcripts = useMemo(() => {
         const list = gene.transcripts || EMPTY_TRANSCRIPTS;
-        return [...list].sort((a, b) => (!!b.isMane === !!a.isMane ? a.id.localeCompare(b.id) : b.isMane ? 1 : -1));
-    }, [gene]);
+        if (transcriptSortMode === "name") return [...list].sort(compareTranscriptsByName);
+        if (!transcriptOrder) return sortTranscriptsByReadCount(list, records);
+
+        const orderById = new Map(transcriptOrder.map((id, index) => [id, index]));
+        return [...list].sort((a, b) =>
+            (orderById.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (orderById.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+            || compareTranscriptsByName(a, b),
+        );
+    }, [gene, records, transcriptSortMode, transcriptOrder]);
 
     // Every transcript (plus the unassigned-reads lane) starts collapsed to just its exon
     // structure; expanding one reveals its quantitative density track and individual reads.
@@ -648,9 +659,9 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
             ? SEP_GAP + 1 + SEP_GAP + 14 + LANE_INNER_GAP + geneLayout.rowCount * (GENE_ROW_H + ROW_GAP) + LANE_BOTTOM_GAP
             : 0;
 
-        let height = 30 + GENE_REGION_ROW_H + SEP_GAP + 1 + SEP_GAP + contextHeight;
+        let height = 30 + GENE_REGION_ROW_H + SEP_GAP + contextHeight;
         for (const lane of lanes) {
-            height += SEP_GAP + 1 + SEP_GAP;
+            height += SEP_GAP;
             const id = lane.kind === "transcript" ? lane.t.id : UNASSIGNED_ID;
             height += !lane.collapsed && hasDensity(id) ? DENSITY_TRACK_H + DENSITY_GAP + EXON_ROW_H : EXON_ROW_H;
             if (!lane.collapsed && lane.kind === "transcript") {
@@ -712,23 +723,9 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
             hitRects.push({ x1: gx1, x2: gx2, y1: y, y2: y + GENE_REGION_ROW_H, kind: "generegion" });
 
             y += GENE_REGION_ROW_H + SEP_GAP;
-            ctx.strokeStyle = "#b6bcc4";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(marginL, Math.round(y) + 0.5);
-            ctx.lineTo(width - MARGIN_R, Math.round(y) + 0.5);
-            ctx.stroke();
-            y += SEP_GAP;
         }
 
         for (const lane of lanes) {
-            y += SEP_GAP;
-            ctx.strokeStyle = "#b6bcc4";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(marginL, Math.round(y) + 0.5);
-            ctx.lineTo(width - MARGIN_R, Math.round(y) + 0.5);
-            ctx.stroke();
             y += SEP_GAP;
 
             if (lane.kind === "transcript") {
@@ -1013,23 +1010,18 @@ export default function AlignmentCanvas({ gene, records, exonIndexById, locked, 
         }
     }
 
-    const curViewWidth = effectiveView.end - effectiveView.start;
-    const matchedZoomLevel = ZOOM_LEVELS.find((lvl) =>
-        lvl.bp === null ? curViewWidth === hardEnd0 - hardStart0 : Math.abs(curViewWidth - lvl.bp) < 1,
-    );
-
     return (
         <div id="plot-container" ref={containerRef}>
             <div className="plot-toolbar">
                 <select
-                    className="zoom-select"
-                    value={matchedZoomLevel ? (matchedZoomLevel.bp ?? "") : "custom"}
-                    onChange={(e) => setViewWidth(e.target.value === "" ? hardEnd0 - hardStart0 : Number(e.target.value))}
+                    className="transcript-sort-select"
+                    value={transcriptSortMode}
+                    aria-label="Transcript order"
+                    title="Vertical transcript order"
+                    onChange={(e) => onTranscriptSortModeChange(e.target.value as TranscriptSortMode)}
                 >
-                    {ZOOM_LEVELS.map((lvl) => (
-                        <option key={lvl.label} value={lvl.bp ?? ""}>{lvl.label}</option>
-                    ))}
-                    {!matchedZoomLevel && <option value="custom">Custom</option>}
+                    <option value="name">Sort by name</option>
+                    <option value="readCount">Sort by assigned reads</option>
                 </select>
                 <button type="button" className="pan-btn" title="Pan left by 75% of the visible range" onClick={() => panByFraction(-0.75)}>◀</button>
                 <button type="button" className="pan-btn" title="Pan right by 75% of the visible range" onClick={() => panByFraction(0.75)}>▶</button>

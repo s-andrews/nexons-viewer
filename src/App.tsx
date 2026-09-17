@@ -6,6 +6,7 @@ import Header, { type LayoutMode } from "./components/Header";
 import Legend from "./components/Legend";
 import GeneTabs, { type GeneTab } from "./components/GeneTabs";
 import AlignmentPanel from "./components/AlignmentPanel";
+import { rankTranscriptsAcrossPanels, type TranscriptSortMode } from "./transcriptSort";
 import "./App.css";
 
 interface BamSource {
@@ -70,6 +71,7 @@ export default function App() {
     const [activeTabId, setActiveTabId] = useState<string | null>(null);
     const [addressBarOpen, setAddressBarOpen] = useState(false);
     const [sharedView, setSharedView] = useState<{ start: number; end: number } | null>(null);
+    const [transcriptSortMode, setTranscriptSortMode] = useState<TranscriptSortMode>("name");
 
     const queryTokensRef = useRef<Map<string, number>>(new Map());
 
@@ -282,6 +284,25 @@ export default function App() {
 
     const currentGene = currentGeneId ? exonIndexById.get(currentGeneId) ?? null : null;
 
+    const lockedTranscriptOrder = useMemo(() => {
+        if (!currentGene || !currentGeneId || transcriptSortMode !== "readCount") return null;
+
+        const lockedSlots = slots
+            .slice(0, layoutMode)
+            .filter((slot): slot is PanelSlot & { sourceId: string } => slot.locked && slot.sourceId !== null);
+
+        if (lockedSlots.length <= 1) return null;
+
+        const panelRecords = lockedSlots.map((slot) => {
+            const source = sources.find((candidate) => candidate.id === slot.sourceId);
+            return source?.ready && source.queriedGeneId === currentGeneId && source.records
+                ? source.records
+                : [];
+        });
+
+        return rankTranscriptsAcrossPanels(currentGene.transcripts, panelRecords);
+    }, [currentGene, currentGeneId, transcriptSortMode, slots, layoutMode, sources]);
+
     useEffect(() => {
         if (!currentGene || !currentGeneId) return;
 
@@ -339,6 +360,9 @@ export default function App() {
                 exonIndexById={exonIndexById}
                 locked={slot.locked}
                 sharedView={sharedView}
+                transcriptSortMode={transcriptSortMode}
+                onTranscriptSortModeChange={setTranscriptSortMode}
+                transcriptOrder={slot.locked ? lockedTranscriptOrder : null}
                 onViewChange={(v) => handlePanelViewChange(slotIndex, v)}
                 onToggleLock={() => toggleSlotLock(slotIndex)}
                 showLock={assignedCount > 1}

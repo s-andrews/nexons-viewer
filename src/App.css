@@ -304,7 +304,7 @@ label.file-label-progress { cursor: default; }
 }
 
 #panelArea {
-    margin: 16px 20px;
+    margin: 0 20px 16px 20px;
     height: calc(100vh - 220px);
     min-height: 420px;
 }
@@ -383,7 +383,7 @@ label.file-label-progress { cursor: default; }
 }
 
 .plot-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
-.zoom-select { padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; background: white; }
+.transcript-sort-select { padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; background: white; }
 .pan-btn {
     padding: 4px 9px;
     border: 1px solid var(--border);

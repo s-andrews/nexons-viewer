@@ -1,5 +1,6 @@
 import type { BamRecord, ExonGene } from "../types";
 import AlignmentCanvas from "./AlignmentCanvas";
+import type { TranscriptSortMode } from "../transcriptSort";
 
 export interface PanelSourceOption {
     id: string;
@@ -17,6 +18,9 @@ interface AlignmentPanelProps {
     exonIndexById: Map<string, ExonGene>;
     locked: boolean;
     sharedView: { start: number; end: number } | null;
+    transcriptSortMode: TranscriptSortMode;
+    onTranscriptSortModeChange: (mode: TranscriptSortMode) => void;
+    transcriptOrder: string[] | null;
     onViewChange: (view: { start: number; end: number }) => void;
     onToggleLock: () => void;
     showLock: boolean;
@@ -33,6 +37,9 @@ export default function AlignmentPanel({
     exonIndexById,
     locked,
     sharedView,
+    transcriptSortMode,
+    onTranscriptSortModeChange,
+    transcriptOrder,
     onViewChange,
     onToggleLock,
     showLock,
@@ -77,6 +84,9 @@ export default function AlignmentPanel({
                         exonIndexById={exonIndexById}
                         locked={locked}
                         sharedView={sharedView}
+                        transcriptSortMode={transcriptSortMode}
+                        onTranscriptSortModeChange={onTranscriptSortModeChange}
+                        transcriptOrder={transcriptOrder}
                         onViewChange={onViewChange}
                     />
                 )}
