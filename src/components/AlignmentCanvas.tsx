@@ -926,7 +926,7 @@ export default function AlignmentCanvas({
             const curWidth = effectiveView.end - effectiveView.start;
             const bpPerPx = curWidth / (width - marginL - MARGIN_R);
             const deltaPx = evt.deltaX !== 0 ? evt.deltaX : evt.deltaY;
-            const shift = deltaPx * bpPerPx;
+            const shift = -deltaPx * bpPerPx;
             const [s, e] = clampView(effectiveView.start + shift, effectiveView.end + shift);
             updateView({ start: s, end: e });
             return;
