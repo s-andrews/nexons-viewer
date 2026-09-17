@@ -450,7 +450,14 @@ export default function App() {
                 <div id="placeholder">
                     <div className="welcome-content">
                         <img className="welcome-logo" src={`${import.meta.env.BASE_URL}nexons_viewer_logo_path.svg`} alt="Nexons Viewer" />
-                        <h1>Get started</h1>
+                        <p className="welcome-intro">
+                            Nexons Viewer lets you review the quantitation of nanopore sequencing data performed by the{" "}
+                            <a href="https://github.com/s-andrews/nexons/" target="_blank" rel="noreferrer">Nexons analysis program</a>.
+                            Nexons matches your aligned nanopore reads against transcript structures and quantitates them.
+                            It also produces annotated BAM files which you can load into this viewer to see your alignments
+                            and review the calls Nexons has made.
+                        </p>
+                        <h1>Getting Started</h1>
                         <ol className="welcome-steps">
                             <li>Load the same GTF file used to run Nexons.</li>
                             <li>Load one or more Nexons-annotated BAM files together with their matching BAI indices.</li>
