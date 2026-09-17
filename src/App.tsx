@@ -448,11 +448,15 @@ export default function App() {
                 </div>
             ) : (
                 <div id="placeholder">
-                    Load a GTF (optionally filtered by transcript support level) to get an instant, searchable gene
-                    list with coordinates. Then load one or more BAM files together with their .bai. Open a gene in
-                    a new tab with the + button above - it queries just that region through each index and shows
-                    the known transcript models alongside the actual reads, in up to 4 panels at once, each with
-                    its own BAM picker.
+                    <div className="welcome-content">
+                        <img className="welcome-logo" src="/nexons_viewer_logo_path.svg" alt="Nexons Viewer" />
+                        <h1>Get started</h1>
+                        <ol className="welcome-steps">
+                            <li>Load the same GTF file used to run Nexons.</li>
+                            <li>Load one or more Nexons-annotated BAM files together with their matching BAI indices.</li>
+                            <li>Select an initial gene to view.</li>
+                        </ol>
+                    </div>
                 </div>
             )}
         </>
