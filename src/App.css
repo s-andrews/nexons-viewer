@@ -406,6 +406,14 @@ label.file-label-progress { cursor: default; }
     outline-offset: 2px;
     border-radius: 2px;
 }
+.welcome-privacy {
+    margin: 0 auto 30px;
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.55;
+    font-weight: 600;
+    text-align: left;
+}
 .welcome-content h1 {
     margin: 0 0 20px;
     font-size: 20px;

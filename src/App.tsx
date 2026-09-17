@@ -457,6 +457,9 @@ export default function App() {
                             It also produces annotated BAM files which you can load into this viewer to see your alignments
                             and review the calls Nexons has made.
                         </p>
+                        <p className="welcome-privacy">
+                            Although nexons-viewer is a web application it reads your data locally. No data is sent to the server.
+                        </p>
                         <h1>Getting Started</h1>
                         <ol className="welcome-steps">
                             <li>Load the same GTF file used to run Nexons.</li>
