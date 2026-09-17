@@ -28,9 +28,9 @@ function colorForRead(r: BamRecord, currentGene: ExonGene): string {
     return nG === currentGene.id || nG === currentGene.name ? CURRENT_GENE_GREEN : OTHER_GENE_PURPLE;
 }
 
-function formatTranscriptReadSuffix(readCount: number, geneReadCount: number): string {
+function formatReadSuffix(readCount: number, totalReadCount: number): string {
     if (readCount === 0) return "";
-    const percentage = geneReadCount > 0 ? (readCount / geneReadCount) * 100 : 0;
+    const percentage = totalReadCount > 0 ? (readCount / totalReadCount) * 100 : 0;
     const formattedPercentage = percentage >= 10
         ? Math.round(percentage).toString()
         : percentage.toFixed(1);
@@ -562,7 +562,7 @@ export default function AlignmentCanvas({
         const TRIANGLE_W = 14; // "▸ " / "▾ " prefix on collapsible lane labels
         let labelWidth = 0;
         for (const t of transcripts) labelWidth = Math.max(labelWidth, measureCtx.measureText(t.id).width + TRIANGLE_W);
-        labelWidth = Math.max(labelWidth, measureCtx.measureText("Unassigned reads").width + TRIANGLE_W);
+        labelWidth = Math.max(labelWidth, measureCtx.measureText("Unassigned").width + TRIANGLE_W);
         for (const g of overlappingGenes) {
             labelWidth = Math.max(labelWidth, measureCtx.measureText(g.name && g.name !== g.id ? g.name : g.id).width);
         }
@@ -617,7 +617,7 @@ export default function AlignmentCanvas({
 
         const visible = records.filter((r) => r.start < effectiveView.end && r.end > effectiveView.start);
         const assignedTranscriptIds = new Set((gene.transcripts || EMPTY_TRANSCRIPTS).map((t) => t.id));
-        const geneReadCount = records.filter((r) => r.tags.nG === gene.id || r.tags.nG === gene.name).length;
+        const totalReadCount = records.length;
 
         type TranscriptLane = {
             kind: "transcript";
@@ -783,7 +783,7 @@ export default function AlignmentCanvas({
                     if (t.name && t.name !== t.id) {
                         ctx.fillStyle = t.isMane ? "#1f2933" : "#6b7280";
                         ctx.font = `${t.isMane ? "700" : "400"} 11px -apple-system, sans-serif`;
-                        const readCountSuffix = formatTranscriptReadSuffix(lane.readCount, geneReadCount);
+                        const readCountSuffix = formatReadSuffix(lane.readCount, totalReadCount);
                         ctx.fillText(`${t.name}${readCountSuffix}`, scaleX(t.end) + 6, rowY + EXON_ROW_H - 1);
                     }
 
@@ -821,7 +821,15 @@ export default function AlignmentCanvas({
                         ctx.fillRect(x1, rowY, Math.max(1, x2 - x1), EXON_ROW_H);
                     }
 
-                    drawToggleLabel(ctx, marginL, width, "Unassigned reads", lane.collapsed, rowY, EXON_ROW_H, UNASSIGNED_ID, hitRects, false, lane.readCount > 0);
+                    ctx.fillStyle = "#6b7280";
+                    ctx.font = "400 11px -apple-system, sans-serif";
+                    ctx.fillText(
+                        `Unassigned${formatReadSuffix(lane.readCount, totalReadCount)}`,
+                        scaleX(gene.end) + 6,
+                        rowY + EXON_ROW_H - 1,
+                    );
+
+                    drawToggleLabel(ctx, marginL, width, "Unassigned", lane.collapsed, rowY, EXON_ROW_H, UNASSIGNED_ID, hitRects, false, lane.readCount > 0);
                 };
 
                 if (lane.showDensity && hasDensity(UNASSIGNED_ID)) {
