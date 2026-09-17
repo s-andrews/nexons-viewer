@@ -167,7 +167,9 @@ function computeCoverage(reads: BamRecord[], scaleX: ScaleX, pxFrom: number, pxT
             const x2 = Math.min(pxTo, scaleX(bEnd));
             if (x2 <= x1) continue;
             const i1 = Math.floor(x1 - pxFrom);
-            const i2 = Math.floor(x2 - pxFrom);
+            // Preserve subpixel-wide covered regions by assigning them at least one full
+            // density column. Adjacent regions may intentionally share that column.
+            const i2 = Math.min(n, Math.max(i1 + 1, Math.ceil(x2 - pxFrom)));
             delta[i1] += 1;
             if (i2 < n) delta[i2] -= 1;
         }
@@ -208,7 +210,7 @@ function drawDensityTrack(ctx: CanvasRenderingContext2D, pxFrom: number, depth: 
     ctx.fillStyle = "rgba(37,99,235,0.55)";
     for (let i = 0; i < depth.length; i++) {
         if (depth[i] <= 0) continue;
-        const h = peak > 0 ? (depth[i] / peak) * trackH : 0;
+        const h = peak > 0 ? Math.min(trackH, (depth[i] / peak) * trackH) : 0;
         ctx.fillRect(pxFrom + i, trackY + (trackH - h), 1, Math.max(1, h));
     }
     ctx.strokeStyle = "#d7dbe0";
