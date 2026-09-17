@@ -61,7 +61,7 @@ export default function Header({
 
     return (
         <header>
-            <img className="app-logo" src="/nexons_viewer_logo_path.svg" alt="Nexons read viewer" />
+            <img className="app-logo" src={`${import.meta.env.BASE_URL}nexons_viewer_logo_path.svg`} alt="Nexons read viewer" />
 
             <label className="tsl-label" htmlFor="tslSelect">
                 Max TSL:

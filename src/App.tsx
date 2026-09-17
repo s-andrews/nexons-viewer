@@ -449,7 +449,7 @@ export default function App() {
             ) : (
                 <div id="placeholder">
                     <div className="welcome-content">
-                        <img className="welcome-logo" src="/nexons_viewer_logo_path.svg" alt="Nexons Viewer" />
+                        <img className="welcome-logo" src={`${import.meta.env.BASE_URL}nexons_viewer_logo_path.svg`} alt="Nexons Viewer" />
                         <h1>Get started</h1>
                         <ol className="welcome-steps">
                             <li>Load the same GTF file used to run Nexons.</li>
