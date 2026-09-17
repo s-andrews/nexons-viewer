@@ -18,6 +18,23 @@ function assignedReadCounts(transcripts: ExonTranscript[], records: BamRecord[])
     return counts;
 }
 
+export function transcriptsMeetingMinimumReadCount(
+    transcripts: ExonTranscript[],
+    panelRecords: BamRecord[][],
+    minimumReadCount: number,
+): string[] {
+    if (minimumReadCount <= 0) return transcripts.map((transcript) => transcript.id);
+
+    const visibleIds = new Set<string>();
+    for (const records of panelRecords) {
+        const counts = assignedReadCounts(transcripts, records);
+        for (const transcript of transcripts) {
+            if (counts.get(transcript.id)! >= minimumReadCount) visibleIds.add(transcript.id);
+        }
+    }
+    return transcripts.filter((transcript) => visibleIds.has(transcript.id)).map((transcript) => transcript.id);
+}
+
 export function sortTranscriptsByReadCount(
     transcripts: ExonTranscript[],
     records: BamRecord[],

@@ -1,6 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BamRecord, CigarOp, ExonGene, ExonTranscript } from "../types";
-import { compareTranscriptsByName, sortTranscriptsByReadCount, type TranscriptSortMode } from "../transcriptSort";
+import {
+    compareTranscriptsByName,
+    sortTranscriptsByReadCount,
+    transcriptsMeetingMinimumReadCount,
+    type TranscriptSortMode,
+} from "../transcriptSort";
 
 // A stable reference (not a fresh `[]` literal per render) - ownPeaks below is memoized on
 // this array's identity, and an unstable fallback would recompute it every render.
@@ -399,6 +404,9 @@ interface AlignmentCanvasProps {
     transcriptSortMode: TranscriptSortMode;
     onTranscriptSortModeChange: (mode: TranscriptSortMode) => void;
     transcriptOrder: string[] | null;
+    minimumReadCount: number;
+    onMinimumReadCountChange: (value: number) => void;
+    visibleTranscriptIds: string[] | null;
     onViewChange: (view: { start: number; end: number }) => void;
 }
 
@@ -411,6 +419,9 @@ export default function AlignmentCanvas({
     transcriptSortMode,
     onTranscriptSortModeChange,
     transcriptOrder,
+    minimumReadCount,
+    onMinimumReadCountChange,
+    visibleTranscriptIds,
     onViewChange,
 }: AlignmentCanvasProps) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -425,7 +436,7 @@ export default function AlignmentCanvas({
     const [hoverToggle, setHoverToggle] = useState(false);
 
     const geneStart0 = gene.start - 1;
-    const transcripts = useMemo(() => {
+    const orderedTranscripts = useMemo(() => {
         const list = gene.transcripts || EMPTY_TRANSCRIPTS;
         if (transcriptSortMode === "name") return [...list].sort(compareTranscriptsByName);
         if (!transcriptOrder) return sortTranscriptsByReadCount(list, records);
@@ -437,15 +448,22 @@ export default function AlignmentCanvas({
         );
     }, [gene, records, transcriptSortMode, transcriptOrder]);
 
+    const transcripts = useMemo(() => {
+        const ids = visibleTranscriptIds
+            ?? transcriptsMeetingMinimumReadCount(gene.transcripts || EMPTY_TRANSCRIPTS, [records], minimumReadCount);
+        const visibleIds = new Set(ids);
+        return orderedTranscripts.filter((transcript) => visibleIds.has(transcript.id));
+    }, [gene, records, orderedTranscripts, minimumReadCount, visibleTranscriptIds]);
+
     // Every transcript (plus the unassigned-reads lane) starts collapsed to just its exon
     // structure; expanding one reveals its quantitative density track and individual reads.
     // Reset when a different gene is opened.
     const [collapsedIds, setCollapsedIds] = useState<Set<string>>(
-        () => new Set([...transcripts.map((t) => t.id), UNASSIGNED_ID]),
+        () => new Set([...(gene.transcripts || EMPTY_TRANSCRIPTS).map((t) => t.id), UNASSIGNED_ID]),
     );
 
     useEffect(() => {
-        setCollapsedIds(new Set([...transcripts.map((t) => t.id), UNASSIGNED_ID]));
+        setCollapsedIds(new Set([...(gene.transcripts || EMPTY_TRANSCRIPTS).map((t) => t.id), UNASSIGNED_ID]));
         setSelectedRead(null);
         setTooltip(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -462,14 +480,14 @@ export default function AlignmentCanvas({
     // Whole-region peak depth per lane (not view-filtered), so it stays stable across pan/zoom.
     const ownPeaks = useMemo(() => {
         const map = new Map<string, number>();
-        const assignedTranscriptIds = new Set(transcripts.map((t) => t.id));
+        const assignedTranscriptIds = new Set((gene.transcripts || EMPTY_TRANSCRIPTS).map((t) => t.id));
         for (const t of transcripts) {
             map.set(t.id, computeMaxDepth(records.filter((r) => r.tags.nT === t.id)));
         }
         const unassigned = records.filter((r) => !r.tags.nT || !assignedTranscriptIds.has(r.tags.nT as string));
         map.set(UNASSIGNED_ID, computeMaxDepth(unassigned));
         return map;
-    }, [records, transcripts]);
+    }, [gene, records, transcripts]);
 
     const mergedExons = useMemo(() => {
         const all = transcripts.flatMap((t) => t.exons).sort((a, b) => a[0] - b[0]);
@@ -597,7 +615,7 @@ export default function AlignmentCanvas({
         const showCigarDetail = pxPerBase >= CIGAR_DETAIL_MIN_PX_PER_BASE;
 
         const visible = records.filter((r) => r.start < effectiveView.end && r.end > effectiveView.start);
-        const assignedTranscriptIds = new Set(transcripts.map((t) => t.id));
+        const assignedTranscriptIds = new Set((gene.transcripts || EMPTY_TRANSCRIPTS).map((t) => t.id));
         const geneReadCount = records.filter((r) => r.tags.nG === gene.id || r.tags.nG === gene.name).length;
 
         type TranscriptLane = {
@@ -1027,8 +1045,20 @@ export default function AlignmentCanvas({
                     <option value="name">Sort by name</option>
                     <option value="readCount">Sort by assigned reads</option>
                 </select>
-                <button type="button" className="pan-btn" title="Pan left by 75% of the visible range" onClick={() => panByFraction(-0.75)}>◀</button>
-                <button type="button" className="pan-btn" title="Pan right by 75% of the visible range" onClick={() => panByFraction(0.75)}>▶</button>
+                <label className="minimum-read-filter">
+                    Min reads
+                    <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={minimumReadCount}
+                        onChange={(e) => {
+                            const value = e.currentTarget.valueAsNumber;
+                            onMinimumReadCountChange(Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0);
+                        }}
+                        aria-label="Minimum assigned reads per transcript"
+                    />
+                </label>
                 <span className="plot-hint">ctrl/⌘+scroll to zoom · shift+scroll, drag, or ←/→ to pan · double-click to reset</span>
             </div>
 

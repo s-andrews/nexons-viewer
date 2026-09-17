@@ -6,7 +6,11 @@ import Header, { type LayoutMode } from "./components/Header";
 import Legend from "./components/Legend";
 import GeneTabs, { type GeneTab } from "./components/GeneTabs";
 import AlignmentPanel from "./components/AlignmentPanel";
-import { rankTranscriptsAcrossPanels, type TranscriptSortMode } from "./transcriptSort";
+import {
+    rankTranscriptsAcrossPanels,
+    transcriptsMeetingMinimumReadCount,
+    type TranscriptSortMode,
+} from "./transcriptSort";
 import "./App.css";
 
 interface BamSource {
@@ -72,6 +76,8 @@ export default function App() {
     const [addressBarOpen, setAddressBarOpen] = useState(false);
     const [sharedView, setSharedView] = useState<{ start: number; end: number } | null>(null);
     const [transcriptSortMode, setTranscriptSortMode] = useState<TranscriptSortMode>("name");
+    const [lockedMinimumReadCount, setLockedMinimumReadCount] = useState(0);
+    const [slotMinimumReadCounts, setSlotMinimumReadCounts] = useState(() => Array<number>(SLOT_COUNT).fill(0));
 
     const queryTokensRef = useRef<Map<string, number>>(new Map());
 
@@ -254,8 +260,19 @@ export default function App() {
     }, []);
 
     const toggleSlotLock = useCallback((slotIndex: number) => {
+        if (slots[slotIndex]?.locked) {
+            setSlotMinimumReadCounts((prev) => prev.map((value, i) => i === slotIndex ? lockedMinimumReadCount : value));
+        }
         setSlots((prev) => prev.map((slot, i) => (i === slotIndex ? { ...slot, locked: !slot.locked } : slot)));
-    }, []);
+    }, [slots, lockedMinimumReadCount]);
+
+    const handleMinimumReadCountChange = useCallback((slotIndex: number, value: number) => {
+        if (slots[slotIndex]?.locked) {
+            setLockedMinimumReadCount(value);
+        } else {
+            setSlotMinimumReadCounts((prev) => prev.map((current, i) => i === slotIndex ? value : current));
+        }
+    }, [slots]);
 
     const handlePanelViewChange = useCallback((slotIndex: number, next: { start: number; end: number }) => {
         setSlots((prev) => {
@@ -302,6 +319,25 @@ export default function App() {
 
         return rankTranscriptsAcrossPanels(currentGene.transcripts, panelRecords);
     }, [currentGene, currentGeneId, transcriptSortMode, slots, layoutMode, sources]);
+
+    const lockedVisibleTranscriptIds = useMemo(() => {
+        if (!currentGene || !currentGeneId) return null;
+
+        const lockedSlots = slots
+            .slice(0, layoutMode)
+            .filter((slot): slot is PanelSlot & { sourceId: string } => slot.locked && slot.sourceId !== null);
+
+        if (lockedSlots.length === 0) return null;
+
+        const panelRecords = lockedSlots.map((slot) => {
+            const source = sources.find((candidate) => candidate.id === slot.sourceId);
+            return source?.ready && source.queriedGeneId === currentGeneId && source.records
+                ? source.records
+                : [];
+        });
+
+        return transcriptsMeetingMinimumReadCount(currentGene.transcripts, panelRecords, lockedMinimumReadCount);
+    }, [currentGene, currentGeneId, lockedMinimumReadCount, slots, layoutMode, sources]);
 
     useEffect(() => {
         if (!currentGene || !currentGeneId) return;
@@ -363,6 +399,9 @@ export default function App() {
                 transcriptSortMode={transcriptSortMode}
                 onTranscriptSortModeChange={setTranscriptSortMode}
                 transcriptOrder={slot.locked ? lockedTranscriptOrder : null}
+                minimumReadCount={slot.locked ? lockedMinimumReadCount : slotMinimumReadCounts[slotIndex]}
+                onMinimumReadCountChange={(value) => handleMinimumReadCountChange(slotIndex, value)}
+                visibleTranscriptIds={slot.locked ? lockedVisibleTranscriptIds : null}
                 onViewChange={(v) => handlePanelViewChange(slotIndex, v)}
                 onToggleLock={() => toggleSlotLock(slotIndex)}
                 showLock={assignedCount > 1}

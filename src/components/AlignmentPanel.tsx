@@ -21,6 +21,9 @@ interface AlignmentPanelProps {
     transcriptSortMode: TranscriptSortMode;
     onTranscriptSortModeChange: (mode: TranscriptSortMode) => void;
     transcriptOrder: string[] | null;
+    minimumReadCount: number;
+    onMinimumReadCountChange: (value: number) => void;
+    visibleTranscriptIds: string[] | null;
     onViewChange: (view: { start: number; end: number }) => void;
     onToggleLock: () => void;
     showLock: boolean;
@@ -40,6 +43,9 @@ export default function AlignmentPanel({
     transcriptSortMode,
     onTranscriptSortModeChange,
     transcriptOrder,
+    minimumReadCount,
+    onMinimumReadCountChange,
+    visibleTranscriptIds,
     onViewChange,
     onToggleLock,
     showLock,
@@ -87,6 +93,9 @@ export default function AlignmentPanel({
                         transcriptSortMode={transcriptSortMode}
                         onTranscriptSortModeChange={onTranscriptSortModeChange}
                         transcriptOrder={transcriptOrder}
+                        minimumReadCount={minimumReadCount}
+                        onMinimumReadCountChange={onMinimumReadCountChange}
+                        visibleTranscriptIds={visibleTranscriptIds}
                         onViewChange={onViewChange}
                     />
                 )}
