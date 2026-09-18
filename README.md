@@ -112,7 +112,7 @@ Vite 8 requires Node.js 20.19 or newer, or Node.js 22.12 or newer. If the packag
 Create a dedicated, non-login service account and application directory:
 
 ```bash
-sudo useradd --system --home-dir /opt/nexons-viewer --shell /sbin/nologin nexons-viewer
+sudo useradd --system --create-home --shell /sbin/nologin nexons-viewer
 sudo install -d -o nexons-viewer -g nexons-viewer /opt/nexons-viewer
 sudo -u nexons-viewer git clone <REPOSITORY_URL> /opt/nexons-viewer
 ```
