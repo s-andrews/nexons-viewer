@@ -521,15 +521,41 @@ export default function AlignmentCanvas({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [gene.id, records]);
 
+    const rightLabelWidth = useMemo(() => {
+        const measureCanvas = document.createElement("canvas");
+        const measureCtx = measureCanvas.getContext("2d")!;
+        const assignedReadCounts = new Map<string, number>();
+        for (const record of records) {
+            if (typeof record.tags.nT !== "string") continue;
+            assignedReadCounts.set(record.tags.nT, (assignedReadCounts.get(record.tags.nT) ?? 0) + 1);
+        }
+
+        let maxWidth = 0;
+        for (const transcript of transcripts) {
+            if (!transcript.name || transcript.name === transcript.id) continue;
+            measureCtx.font = `${transcript.isMane ? "700" : "400"} 11px -apple-system, sans-serif`;
+            const suffix = formatReadSuffix(assignedReadCounts.get(transcript.id) ?? 0, records.length);
+            maxWidth = Math.max(maxWidth, measureCtx.measureText(`${transcript.name}${suffix}`).width);
+        }
+        return maxWidth;
+    }, [records, transcripts]);
+
     const hardEnd0 = useMemo(() => {
         let e = gene.end;
         for (const r of records) if (r.end > e) e = r.end;
         let s = geneStart0;
         for (const r of records) if (r.start < s) s = r.start;
-        const pad = Math.max(200, Math.round((e - s) * 0.05));
-        return e + pad;
+        const span = e - s;
+        const leftPad = Math.max(200, Math.round(span * 0.05));
+        const baselineRightPad = Math.max(200, Math.round(span * 0.05));
+        const plotWidth = Math.max(1, width - MARGIN_L_MAX - MARGIN_R);
+        const requiredLabelSpace = Math.min(plotWidth - 1, rightLabelWidth + 10);
+        const labelRightPad = requiredLabelSpace > 0
+            ? Math.ceil((requiredLabelSpace * (span + leftPad)) / (plotWidth - requiredLabelSpace))
+            : 0;
+        return e + Math.max(baselineRightPad, labelRightPad);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [gene.id, records]);
+    }, [gene.id, records, width, rightLabelWidth]);
 
     const [view, setView] = useState({ start: hardStart0, end: hardEnd0 });
 
