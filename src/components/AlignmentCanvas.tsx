@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Oliver Slay and Simon Andrews
+// SPDX-License-Identifier: GPL-3.0-only
+
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BamRecord, CigarOp, ExonGene, ExonTranscript } from "../types";
 import {

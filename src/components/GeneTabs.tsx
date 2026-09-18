@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Oliver Slay and Simon Andrews
+// SPDX-License-Identifier: GPL-3.0-only
+
 import { useMemo, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import type { ExonGene } from "../types";
 

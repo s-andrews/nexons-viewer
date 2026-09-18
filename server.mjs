@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Oliver Slay and Simon Andrews
+// SPDX-License-Identifier: GPL-3.0-only
+
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";

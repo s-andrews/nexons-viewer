@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Oliver Slay and Simon Andrews
+// SPDX-License-Identifier: GPL-3.0-only
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BaiRefIndex, BamRecord, ExonGene } from "./types";
 import { parseBAMHeader, readBAI, fetchRegionRecords } from "./bamIo";

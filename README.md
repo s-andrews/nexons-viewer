@@ -21,6 +21,12 @@ To start using it simply do the following:
 All data is read locally from your machine.  No data is sent to the server to make the viewer run.
 
 
+# License
+
+Nexons Viewer is licensed under the GNU General Public License version 3. See [LICENSE](LICENSE) for the full license text.
+
+Copyright (C) 2026 Oliver Slay and Simon Andrews.
+
 
 # Developing Nexons Viewer
 

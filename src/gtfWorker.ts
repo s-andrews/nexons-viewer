@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Oliver Slay and Simon Andrews
+// SPDX-License-Identifier: GPL-3.0-only
+
 // Streams a GTF file line-by-line and builds gene/transcript/exon models without ever
 // holding the raw text in memory - only the parsed result accumulates as the file is read.
 //
