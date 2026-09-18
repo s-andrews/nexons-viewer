@@ -31,6 +31,11 @@ function colorForRead(r: BamRecord, currentGene: ExonGene): string {
     return nG === currentGene.id || nG === currentGene.name ? CURRENT_GENE_GREEN : OTHER_GENE_PURPLE;
 }
 
+function isAnnotatedToGene(r: BamRecord, gene: ExonGene): boolean {
+    const nG = typeof r.tags.nG === "string" ? r.tags.nG : undefined;
+    return nG === gene.id || nG === gene.name;
+}
+
 function formatReadSuffix(readCount: number, totalReadCount: number): string {
     if (readCount === 0) return "";
     const percentage = totalReadCount > 0 ? (readCount / totalReadCount) * 100 : 0;
@@ -465,6 +470,11 @@ export default function AlignmentCanvas({
         return orderedTranscripts.filter((transcript) => visibleIds.has(transcript.id));
     }, [gene, records, orderedTranscripts, minimumReadCount, visibleTranscriptIds]);
 
+    const selectedGeneRecords = useMemo(
+        () => records.filter((record) => isAnnotatedToGene(record, gene)),
+        [gene, records],
+    );
+
     // Every transcript (plus the unassigned-reads lane) starts with just its exon structure.
     // Repeated clicks cycle through reads+density, density only, and back to transcript only.
     // Reset when a different gene is opened.
@@ -493,10 +503,10 @@ export default function AlignmentCanvas({
         for (const t of transcripts) {
             map.set(t.id, computeMaxDepth(records.filter((r) => r.tags.nT === t.id)));
         }
-        const unassigned = records.filter((r) => !r.tags.nT || !assignedTranscriptIds.has(r.tags.nT as string));
+        const unassigned = selectedGeneRecords.filter((r) => !r.tags.nT || !assignedTranscriptIds.has(r.tags.nT as string));
         map.set(UNASSIGNED_ID, computeMaxDepth(unassigned));
         return map;
-    }, [gene, records, transcripts]);
+    }, [gene, records, selectedGeneRecords, transcripts]);
 
     const mergedExons = useMemo(() => {
         const all = transcripts.flatMap((t) => t.exons).sort((a, b) => a[0] - b[0]);
@@ -525,7 +535,7 @@ export default function AlignmentCanvas({
         const measureCanvas = document.createElement("canvas");
         const measureCtx = measureCanvas.getContext("2d")!;
         const assignedReadCounts = new Map<string, number>();
-        for (const record of records) {
+        for (const record of selectedGeneRecords) {
             if (typeof record.tags.nT !== "string") continue;
             assignedReadCounts.set(record.tags.nT, (assignedReadCounts.get(record.tags.nT) ?? 0) + 1);
         }
@@ -534,11 +544,11 @@ export default function AlignmentCanvas({
         for (const transcript of transcripts) {
             if (!transcript.name || transcript.name === transcript.id) continue;
             measureCtx.font = `${transcript.isMane ? "700" : "400"} 11px -apple-system, sans-serif`;
-            const suffix = formatReadSuffix(assignedReadCounts.get(transcript.id) ?? 0, records.length);
+            const suffix = formatReadSuffix(assignedReadCounts.get(transcript.id) ?? 0, selectedGeneRecords.length);
             maxWidth = Math.max(maxWidth, measureCtx.measureText(`${transcript.name}${suffix}`).width);
         }
         return maxWidth;
-    }, [records, transcripts]);
+    }, [selectedGeneRecords, transcripts]);
 
     const hardEnd0 = useMemo(() => {
         let e = gene.end;
@@ -651,7 +661,7 @@ export default function AlignmentCanvas({
 
         const visible = records.filter((r) => r.start < effectiveView.end && r.end > effectiveView.start);
         const assignedTranscriptIds = new Set((gene.transcripts || EMPTY_TRANSCRIPTS).map((t) => t.id));
-        const totalReadCount = records.length;
+        const totalReadCount = selectedGeneRecords.length;
 
         type TranscriptLane = {
             kind: "transcript";
@@ -687,7 +697,7 @@ export default function AlignmentCanvas({
         // quantitative density track (when there's anything to show) and the individual reads.
         const lanes: Lane[] = transcripts.map((t) => {
             const reads = visible.filter((r) => r.tags.nT === t.id);
-            const readCount = records.filter((r) => r.tags.nT === t.id).length;
+            const readCount = selectedGeneRecords.filter((r) => r.tags.nT === t.id).length;
             const mode = readCount > 0 ? laneViewModes.get(t.id) ?? "transcript" : "transcript";
             const showReads = mode === "reads";
             return {
@@ -702,12 +712,14 @@ export default function AlignmentCanvas({
         });
 
         const unassigned = visible.filter((r) => !r.tags.nT || !assignedTranscriptIds.has(r.tags.nT as string));
-        const unassignedReadCount = records.filter((r) => !r.tags.nT || !assignedTranscriptIds.has(r.tags.nT as string)).length;
-        const geneLevelReads = unassigned.filter((r) => r.tags.nR === "gene");
-        const noMatchReads = unassigned.filter((r) => r.tags.nR !== "gene");
-        const unassignedMode = unassignedReadCount > 0 ? laneViewModes.get(UNASSIGNED_ID) ?? "transcript" : "transcript";
+        const selectedGeneUnassigned = unassigned.filter((r) => isAnnotatedToGene(r, gene));
+        const unassignedReadCount = selectedGeneRecords.filter((r) => !r.tags.nT || !assignedTranscriptIds.has(r.tags.nT as string)).length;
+        const geneLevelReads = unassigned.filter((r) => r.tags.nR === "gene" && isAnnotatedToGene(r, gene));
+        const noMatchReads = unassigned.filter((r) => r.tags.nR !== "gene" || !isAnnotatedToGene(r, gene));
+        const hasVisibleUnassignedReads = records.some((r) => !r.tags.nT || !assignedTranscriptIds.has(r.tags.nT as string));
+        const unassignedMode = hasVisibleUnassignedReads ? laneViewModes.get(UNASSIGNED_ID) ?? "transcript" : "transcript";
         const showUnassignedReads = unassignedMode === "reads";
-        const unassignedDensity = computeCoverage([...geneLevelReads, ...noMatchReads], scaleX, pxFrom, pxTo);
+        const unassignedDensity = computeCoverage(selectedGeneUnassigned, scaleX, pxFrom, pxTo);
         lanes.push({
             kind: "unassigned",
             collapsed: unassignedMode === "transcript",
@@ -887,7 +899,7 @@ export default function AlignmentCanvas({
 
                     ctx.fillStyle = "#4b5563";
                     ctx.font = "600 11px -apple-system, sans-serif";
-                    ctx.fillText("No match to this gene (nR: blank/multi) — may align to an overlapping gene", 4, y + 11);
+                    ctx.fillText("No match to this gene — may align to an overlapping gene", 4, y + 11);
                     y += 14 + LANE_INNER_GAP;
                     for (const r of lane.noMatchLayout!.reads) {
                         drawReadRow(ctx, r, y + r.row * (ROW_H + ROW_GAP), scaleX, showCigarDetail, r === selectedRead, gene, hitRects);
@@ -932,7 +944,7 @@ export default function AlignmentCanvas({
         }
 
         hitRectsRef.current = hitRects;
-    }, [effectiveView, records, gene, transcripts, overlappingGenes, marginL, width, geneStart0, laneViewModes, mergedExons, ownPeaks, selectedRead]);
+    }, [effectiveView, records, selectedGeneRecords, gene, transcripts, overlappingGenes, marginL, width, geneStart0, laneViewModes, mergedExons, ownPeaks, selectedRead]);
 
     // ---- tooltip positioning: flip to stay inside the viewport ----
     useLayoutEffect(() => {
