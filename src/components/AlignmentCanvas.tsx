@@ -932,6 +932,7 @@ export default function AlignmentCanvas({
 
                 ctx.fillStyle = "#a3b8d8";
                 ctx.fillRect(x1, rowY, Math.max(1, x2 - x1), GENE_ROW_H);
+                drawStrandArrows(ctx, x1, x2, rowY, GENE_ROW_H, g.strand, pxFrom, pxTo);
 
                 ctx.fillStyle = "#ffffff";
                 ctx.fillRect(0, rowY - 1, marginL - 2, GENE_ROW_H + 2);
