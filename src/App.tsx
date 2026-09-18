@@ -472,6 +472,12 @@ export default function App() {
                     </div>
                 </div>
             )}
+            <footer className="app-footer">
+                Nexons viewer © Oliver Slay and Simon Andrews. {" "}
+                <a href="https://github.com/s-andrews/nexons-viewer/issues/" target="_blank" rel="noreferrer">
+                    Report a problem
+                </a>
+            </footer>
         </>
     );
 }
