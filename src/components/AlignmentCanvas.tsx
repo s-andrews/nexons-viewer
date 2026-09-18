@@ -976,7 +976,8 @@ export default function AlignmentCanvas({
             return;
         }
 
-        const rect = (evt.currentTarget as HTMLCanvasElement).getBoundingClientRect();
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) return;
         const mx = evt.clientX - rect.left;
         const curWidth = effectiveView.end - effectiveView.start;
         const cursorGenomic = effectiveView.start + ((mx - marginL) / (width - marginL - MARGIN_R)) * curWidth;
@@ -988,23 +989,23 @@ export default function AlignmentCanvas({
         updateView({ start: s, end: e });
     }
 
-    // React control zooming into each panel
-
+    // Native capture listener is required so preventDefault can suppress browser zoom across
+    // the full scrollable panel body, including the spacer below the canvas.
     const handleWheelRef = useRef(handleWheel);
     handleWheelRef.current = handleWheel;
     useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
+        const container = containerRef.current;
+        if (!container) return;
+        const panelBody = container.closest<HTMLElement>(".alignment-panel-body");
+        if (!panelBody) return;
 
         function onWheel(evt: WheelEvent) {
             handleWheelRef.current(evt);
         }
 
-        canvas.addEventListener("wheel", onWheel, { passive:false });
-        return () => canvas.removeEventListener("wheel", onWheel);
+        panelBody.addEventListener("wheel", onWheel, { passive: false, capture: true });
+        return () => panelBody.removeEventListener("wheel", onWheel, { capture: true });
     }, []);
-
-    //
 
     // Below this many px of movement between mousedown and mouseup, treat the gesture as a
     // click (show/update the tooltip) rather than a pan.
@@ -1126,7 +1127,6 @@ export default function AlignmentCanvas({
             <canvas
                 ref={canvasRef}
                 tabIndex={0}
-                // onWheel={handleWheel}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseLeave={() => setHoverToggle(false)}
