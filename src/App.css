@@ -130,7 +130,7 @@ label.file-label-progress { cursor: default; }
     justify-content: space-between;
     gap: 10px;
 }
-#suggestions .row:hover { background: #f0f4ff; }
+#suggestions .row.active { background: #f0f4ff; }
 .sugg-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
 
 #status { font-size: 12px; color: var(--muted); min-width: 220px; text-align: right; }
