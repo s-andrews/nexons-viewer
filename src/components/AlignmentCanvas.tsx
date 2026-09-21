@@ -1098,8 +1098,9 @@ export default function AlignmentCanvas({
     }
 
     // Tooltip content is click-driven; movement updates the ruler and hover cursor.
-    function handleMouseMove(evt: React.MouseEvent<HTMLCanvasElement>) {
-        const rect = evt.currentTarget.getBoundingClientRect();
+    function handleMouseMove(evt: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) return;
         const mx = evt.clientX - rect.left;
         setMouseX(mx);
         if (draggingRef.current) return;
@@ -1166,7 +1167,11 @@ export default function AlignmentCanvas({
                 onKeyDown={handleCanvasKeyDown}
             />
 
-            <div className="plot-footer-spacer" />
+            <div
+                className="plot-footer-spacer"
+                onMouseMove={handleMouseMove}
+                onMouseLeave={() => setMouseX(null)}
+            />
 
             {tooltip && (
                 <div id="tooltip" ref={tooltipRef} style={{ display: "block" }}>
