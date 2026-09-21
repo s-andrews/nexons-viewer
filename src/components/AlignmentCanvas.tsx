@@ -449,6 +449,7 @@ export default function AlignmentCanvas({
     const [tooltip, setTooltip] = useState<{ hit: HitRect; x: number; y: number } | null>(null);
     const [selectedRead, setSelectedRead] = useState<BamRecord | null>(null);
     const [hoverToggle, setHoverToggle] = useState(false);
+    const [mouseX, setMouseX] = useState<number | null>(null);
 
     const geneStart0 = gene.start - 1;
     const orderedTranscripts = useMemo(() => {
@@ -771,18 +772,6 @@ export default function AlignmentCanvas({
             }
         }
 
-        // Ruler
-        ctx.strokeStyle = "#d7dbe0";
-        ctx.fillStyle = "#6b7280";
-        ctx.font = "11px -apple-system, sans-serif";
-        ctx.beginPath();
-        ctx.moveTo(marginL, 20.5);
-        ctx.lineTo(width - MARGIN_R, 20.5);
-        ctx.stroke();
-        ctx.fillText(`${Math.round(effectiveView.start + 1).toLocaleString()}`, marginL, 14);
-        const endLabel = `${Math.round(effectiveView.end).toLocaleString()}`;
-        ctx.fillText(endLabel, width - MARGIN_R - ctx.measureText(endLabel).width, 14);
-
         const hitRects: HitRect[] = [];
         let y = 30;
 
@@ -947,6 +936,46 @@ export default function AlignmentCanvas({
         hitRectsRef.current = hitRects;
     }, [effectiveView, records, selectedGeneRecords, gene, transcripts, overlappingGenes, marginL, width, geneStart0, laneViewModes, mergedExons, ownPeaks, selectedRead]);
 
+    // Paint after every render so a track redraw also restores the ruler, while mouse
+    // movement alone only redraws this small strip rather than all the reads.
+    useEffect(() => {
+        const ctx = canvasRef.current?.getContext("2d");
+        if (!ctx) return;
+        const right = width - MARGIN_R;
+        ctx.save();
+        ctx.clearRect(0, 0, width, 25);
+        ctx.strokeStyle = "#d7dbe0";
+        ctx.fillStyle = "#6b7280";
+        ctx.font = "11px -apple-system, sans-serif";
+        ctx.beginPath();
+        ctx.moveTo(marginL, 20.5);
+        ctx.lineTo(right, 20.5);
+        ctx.stroke();
+        ctx.fillText(Math.round(effectiveView.start + 1).toLocaleString(), marginL, 14);
+        const endLabel = Math.round(effectiveView.end).toLocaleString();
+        ctx.fillText(endLabel, right - ctx.measureText(endLabel).width, 14);
+
+        if (mouseX !== null && mouseX >= marginL && mouseX <= right) {
+            const fraction = (mouseX - marginL) / (right - marginL);
+            // Interpolate the same one-based coordinates displayed at the ruler ends.
+            const position = Math.round(effectiveView.start + 1 + fraction * (effectiveView.end - effectiveView.start - 1));
+            const label = position.toLocaleString();
+            const labelWidth = ctx.measureText(label).width;
+            const labelX = Math.max(marginL, Math.min(right - labelWidth, mouseX - labelWidth / 2));
+            // Keep the moving label legible when it meets either endpoint label.
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(labelX - 3, 1, labelWidth + 6, 16);
+            ctx.fillStyle = "#0e7490";
+            ctx.fillText(label, labelX, 14);
+            ctx.strokeStyle = "#0e7490";
+            ctx.beginPath();
+            ctx.moveTo(mouseX, 17);
+            ctx.lineTo(mouseX, 24);
+            ctx.stroke();
+        }
+        ctx.restore();
+    });
+
     // ---- tooltip positioning: flip to stay inside the viewport ----
     useLayoutEffect(() => {
         if (!tooltip || !tooltipRef.current) return;
@@ -1068,13 +1097,12 @@ export default function AlignmentCanvas({
         updateView({ start: hardStart0, end: hardEnd0 });
     }
 
-    // Tooltip content is click-driven (see onUp above) - this only tracks the hover cursor
-    // (pointer over a toggle) so mousemove doesn't make the tooltip flicker as it crosses
-    // between adjacent hit rects.
+    // Tooltip content is click-driven; movement updates the ruler and hover cursor.
     function handleMouseMove(evt: React.MouseEvent<HTMLCanvasElement>) {
-        if (draggingRef.current) return;
         const rect = evt.currentTarget.getBoundingClientRect();
         const mx = evt.clientX - rect.left;
+        setMouseX(mx);
+        if (draggingRef.current) return;
         const my = evt.clientY - rect.top;
         const hit = hitRectsRef.current.find((h) => mx >= h.x1 && mx <= h.x2 && my >= h.y1 && my <= h.y2);
         setHoverToggle(hit?.kind === "toggle");
@@ -1129,7 +1157,10 @@ export default function AlignmentCanvas({
                 tabIndex={0}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
-                onMouseLeave={() => setHoverToggle(false)}
+                onMouseLeave={() => {
+                    setHoverToggle(false);
+                    setMouseX(null);
+                }}
                 onDoubleClick={handleDoubleClick}
                 style={{ cursor: draggingRef.current ? "grabbing" : hoverToggle ? "pointer" : "default" }}
                 onKeyDown={handleCanvasKeyDown}
