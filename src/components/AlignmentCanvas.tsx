@@ -677,6 +677,7 @@ export default function AlignmentCanvas({
         };
         type UnassignedLane = {
             kind: "unassigned";
+            hasReads: boolean;
             collapsed: boolean;
             showDensity: boolean;
             showReads: boolean;
@@ -723,6 +724,7 @@ export default function AlignmentCanvas({
         const unassignedDensity = computeCoverage(selectedGeneUnassigned, scaleX, pxFrom, pxTo);
         lanes.push({
             kind: "unassigned",
+            hasReads: hasVisibleUnassignedReads,
             collapsed: unassignedMode === "transcript",
             showDensity: unassignedMode !== "transcript",
             showReads: showUnassignedReads,
@@ -864,7 +866,8 @@ export default function AlignmentCanvas({
                         rowY + EXON_ROW_H - 1,
                     );
 
-                    drawToggleLabel(ctx, marginL, width, "Unassigned", lane.collapsed, rowY, EXON_ROW_H, UNASSIGNED_ID, hitRects, false, lane.readCount > 0);
+                    // Reads without a gene annotation still need an expandable lane.
+                    drawToggleLabel(ctx, marginL, width, "Unassigned", lane.collapsed, rowY, EXON_ROW_H, UNASSIGNED_ID, hitRects, false, lane.hasReads);
                 };
 
                 if (lane.showDensity && hasDensity(UNASSIGNED_ID)) {
@@ -957,21 +960,37 @@ export default function AlignmentCanvas({
 
         if (mouseX !== null && mouseX >= marginL && mouseX <= right) {
             const fraction = (mouseX - marginL) / (right - marginL);
-            // Interpolate the same one-based coordinates displayed at the ruler ends.
-            const position = Math.round(effectiveView.start + 1 + fraction * (effectiveView.end - effectiveView.start - 1));
+            const viewSpan = effectiveView.end - effectiveView.start;
+            const pxPerBase = (right - marginL) / viewSpan;
+            // Bases occupy zero-based, half-open intervals; label them one-based.
+            // At the right endpoint, keep highlighting the last visible base.
+            const baseStart = Math.min(
+                Math.floor(effectiveView.start + fraction * viewSpan),
+                Math.ceil(effectiveView.end) - 1,
+            );
+            const position = baseStart + 1;
+            const baseLeft = marginL + (baseStart - effectiveView.start) * pxPerBase;
+            const left = Math.max(marginL, baseLeft);
+            const rightEdge = Math.min(right, baseLeft + pxPerBase);
+            const labelCenter = pxPerBase > 1 ? (left + rightEdge) / 2 : mouseX;
             const label = position.toLocaleString();
             const labelWidth = ctx.measureText(label).width;
-            const labelX = Math.max(marginL, Math.min(right - labelWidth, mouseX - labelWidth / 2));
+            const labelX = Math.max(marginL, Math.min(right - labelWidth, labelCenter - labelWidth / 2));
             // Keep the moving label legible when it meets either endpoint label.
             ctx.fillStyle = "#ffffff";
             ctx.fillRect(labelX - 3, 1, labelWidth + 6, 16);
             ctx.fillStyle = "#0e7490";
             ctx.fillText(label, labelX, 14);
-            ctx.strokeStyle = "#0e7490";
-            ctx.beginPath();
-            ctx.moveTo(mouseX, 17);
-            ctx.lineTo(mouseX, 24);
-            ctx.stroke();
+            if (pxPerBase > 1) {
+                ctx.fillStyle = "rgba(14, 116, 144, 0.3)";
+                ctx.fillRect(left, 17, rightEdge - left, 7);
+            } else {
+                ctx.strokeStyle = "#0e7490";
+                ctx.beginPath();
+                ctx.moveTo(mouseX, 17);
+                ctx.lineTo(mouseX, 24);
+                ctx.stroke();
+            }
         }
         ctx.restore();
     });
